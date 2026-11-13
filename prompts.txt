@@ -99,3 +99,65 @@
 [2026-11-12T21:29:04-08:00] (orchestration) Asked-about ticket done (usxrypmx); mvp advanced; main workspace moved onto mvp; all agent workspaces removed.
 [2026-11-12T21:30:12-08:00] Prompt: Restarted dev server; colours are showing now.
   Response: Root cause: dev server kept serving a stale compiled globals.css after jj rewrote the file (JS changes reloaded, CSS did not; touch didn't help). Restart fixed it; verified served CSS now contains tone classes.
+[2026-11-12T21:31:12-08:00] Prompt: Ensure .env isn't anywhere in jj/git history, then merge and push.
+  Response: Verifying .env absence across all commits and object store before fast-forwarding main to mvp and pushing.
+[2026-11-12T21:31:30-08:00] Verified: no commit (visible or via git refs) touches .env; .env blob absent from object store; no sk-ant strings in any patch; .env.example has an empty key; no data/, .db, node_modules or .next tracked. Fast-forwarded main to mvp and pushed main to origin.
+[2026-11-12T21:45:48-08:00] Prompt: Help prepare Loom video covering prioritized problem, beneficiaries, why AI, workflow change, architecture choice, human judgment, impact measurement, assumptions/risks/tradeoffs, 2-3 success metrics.
+  Response: Wrote a talk track grounded in the built app, ADRs, and seed results.
+[2026-11-12T21:46:06-08:00] Prompt: Help me draft a script (for the Loom).
+  Response: Wrote a spoken, timed Loom script with screen cues covering all required points and 3 success metrics.
+[2026-11-12T21:52:49-08:00] Prompt: Run the seed again to start fresh for recording.
+  Response: Ran npm run seed; verified /review loads for the PM.
+[2026-11-12T22:38:06-08:00] Prompt: Show me the script again.
+  Response: Re-displayed the Loom script with counts updated to the latest seed (26 Requests -> 17 Problems, 7 multi-Evidence).
+[2026-11-16T21:42:34-08:00] Prompt: Research MetaCTO public AI content (resources, whitepapers, blogs), synthesize into assessment docs to critique this project and ~/projects/hhkb for interview prep.
+  Response: Crawled metacto.com sitemap (996 URLs) + 21 whitepaper PDFs; wrote canon synthesis, two-lens assessment rubric, featureful and hhkb assessments, and interview playbook to ~/projects/metacto-interview-prep/ (outside this repo).
+[2026-11-16T22:00:19-08:00] Prompt: Make the hhkb fixes.
+  Response: In ~/projects/hhkb: ignored/untracked nvim.log, refreshed README Project Structure, removed "pending publication" notes (README, roadmap, execution plan); 44 tests pass; committed a1bf1cb with jj and pushed main (origin was 3 commits behind). Marked done in prep docs.
+[2026-11-18T20:03:35-08:00] Prompt: /wayfinder — chart a v2 of featureful (on a new v2 branch) that aligns much more closely with how MetaCTO does AI engineering, per the analysis in ~/projects/metacto-interview-prep/.
+  Response: Started wayfinder charting: read the featureful assessment and MetaCTO canon; grilling to name the destination.
+[2026-11-18T20:18:00-08:00] (backfill) Prompt: Grilling round 1 answers: Q1 destination = handoff-ready v2 spec + vertical-slice tickets; Q2 evolve v1 (branch v2 from main); Q3 both lenses (product + build); Q4 2 hours of build, shared API pool, stay within $20; Q5 v2 still answers ASSIGNMENT.md.
+  Response: Checked facts (no CI; 5 modules call generateText directly via one model constant; GitHub remote). Asked round 2: v2 scope (6 product items in, model routing/embeddings/Effort-Risk context out), eval gate in GitHub Actions, eval scope, build-lens deliverables, baseline-first, per-module AI off switch.
+[2026-11-18T20:18:00-08:00] (backfill) Prompt: Yes to all round 2; also Boundary notes and PM Match review feel unintuitive/half-baked and must justify their existence with clear, measurable outcomes.
+  Response: Read GLOSSARY, ADR 0002, match-review + boundary-note-writer + /review page; diagnosed (FIFO undifferentiated queue, invisible background note rewrites, no outcome metric). Asked round 3: Match review as risk-ranked escalation queue feeding regression cases; Boundary notes kept only if an eval ablation shows they help; freshness state and build ledger become stretch.
+[2026-11-18T20:18:00-08:00] (backfill) Prompt: Yes to all round 3.
+  Response: Began charting the v2 wayfinder map.
+[2026-11-18T20:18:00-08:00] Prompt: Move the session to the featureful directory so the prompt-log rule continues on the v2 branch; backfill any missing history; then continue charting.
+  Response: Confirmed the session already runs in ~/projects/featureful; backfilled the three grilling-round entries; continued charting (v2 bookmark, map, tickets, research subagent).
+[2026-11-18T20:19:16-08:00] Charted v2 wayfinder map: created jj bookmark v2; wrote .scratch/v2/map.md and 9 tickets (01 research AI-call seam facts; 02 trace/budget/off switch; 03 eval harness + gate; 04 Match review escalation queue; 05 queue UI prototype; 06 Boundary notes ablation; 07 /review metrics; 08 delegation charter + PR template; 09 assemble spec). Fired research subagent for 01 (branch research/ai-call-seam).
+[2026-11-18T20:19:40-08:00] Prompt: /wayfinder .scratch/v2/map.md (work through the map).
+  Response: Claimed 01 (research subagent running) and the first open frontier ticket, 08 Delegation charter, risk lanes and PR template; grilling it.
+[2026-11-18T20:21:53-08:00] Prompt: Yes to all (charter grilling Q1-Q8).
+  Response: Resolved ticket 08 (delegation charter): answer recorded, map Decisions-so-far updated, fog narrowed, branch-protection question handed to ticket 03.
+[2026-11-18T20:25:29-08:00] (subagent) Research ticket 01 (AI-call seam facts) returned; recorded answer, resolved, map pointer added; added retry/max_tokens/parse-failure questions to ticket 02. Findings on pushed bookmark research/ai-call-seam.
+[2026-11-18T20:26:55-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 02 (AI call trace, budget guard and off switch); grilling it.
+[2026-11-18T20:28:35-08:00] Prompt: Yes to all (trace/budget/off-switch grilling Q1-Q10).
+  Response: Resolved ticket 02; added AI call to GLOSSARY.md; map updated (decision pointer, two fog items cleared, freshness narrowed); handed bypass-queue item to 04 and spend/refusal metrics to 07.
+[2026-11-18T20:31:32-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 03 (Matcher eval harness and release gate); grilling it.
+[2026-11-18T20:32:55-08:00] Prompt: Yes to all (eval harness grilling Q1-Q10).
+  Response: Resolved ticket 03; map updated; handed regression-case promotion to 04 and the ablation vehicle to 06.
+[2026-11-18T20:33:31-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 04 (Match review as a risk-ranked escalation queue); grilling it.
+[2026-11-18T20:35:15-08:00] Prompt: Yes to all (escalation queue grilling Q1-Q10).
+  Response: Resolved ticket 04; GLOSSARY.md gained Escalation, Escalation reason, Auto-accepted, Regression case, re-scoped Match review and Matching example; map updated.
+[2026-11-18T20:35:38-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 05 (Match review queue UI prototype); prototyping it.
+[2026-11-18T20:50:35-08:00] Prompt: Prototype verdict: B's inbox with C's outcome stats on top.
+  Response: Built 3 /review?variant= prototypes (annotated list, triage inbox, focus mode) on real seed data in a throwaway change; pushed bookmark prototype/match-review-queue (never merged); resolved ticket 05 with the combined design; map updated; handed stat windows to 07 and suggestion placement to 06.
+[2026-11-18T20:53:53-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 06 (Do Boundary notes earn their place?); grilling it.
+[2026-11-18T20:56:17-08:00] Prompt: Yes to all (Boundary notes grilling Q1-Q7).
+  Response: Resolved ticket 06 as a conditional build step (three-arm ablation, keep threshold, both branches, ADR 0003); map updated.
+[2026-11-18T20:58:36-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 07 (Instrumented metrics on /review); grilling it.
+[2026-11-18T21:01:40-08:00] Prompt: Yes to all (metrics grilling Q1-Q9).
+  Response: Resolved ticket 07; GLOSSARY.md gained PM agreement rate and Escalation rate; map updated. Only ticket 09 (assemble spec) remains.
+[2026-11-18T21:04:20-08:00] Prompt: /wayfinder .scratch/v2/map.md
+  Response: Claimed ticket 09 (Assemble the v2 spec and build tickets); writing spec + build tickets.
+[2026-11-18T21:06:48-08:00] Wrote .scratch/v2/spec.md (21 user stories, decisions, build plan) and 12 build tickets in .scratch/v2/issues/build/; awaiting final human check on ticket 09.
+[2026-11-18T21:08:32-08:00] Prompt: Yes to all (final check: stale definition; 2-hour plan and cut order).
+  Response: Resolved ticket 09; map destination reached (all 9 wayfinder tickets resolved; fog empty).
+[2026-11-18T21:12:51-08:00] Prompt: Clear context next and work through the build tickets with minimal interaction (going to sleep).
+  Response: Asked overnight authority: agents merge into v2 (never main), gh secret + branch protection allowed, ablation by agreed rule, $5 API spend cap. Pushed v2, set ANTHROPIC_API_KEY repo secret (piped from .env, never printed), wrote .scratch/v2/build-runbook.md, updated build tickets 01/02.
