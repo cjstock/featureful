@@ -20,3 +20,26 @@
   Response: Wrote 9 ticket files to .scratch/mvp/issues/01..09 (Status: ready-for-agent) with blocking edges.
 [2026-11-12T19:21:41-08:00] Prompt: Commit the planning work with jj.
   Response: Split working copy: kept ASSIGNMENT.md + .gitignore removal in the existing "chore(assignment)" change; committed planning docs (CLAUDE.md agent skills, GLOSSARY, ADR, docs/agents, spec, tickets, prompts.txt) as a separate change.
+[2026-11-12T19:23:06-08:00] Prompt: Use subagents to /implement-spec .scratch/mvp/spec.md.
+  Response: Set up jj integration bookmark + per-ticket jj workspaces; dispatching implementer subagents along the ticket graph.
+[2026-11-12T19:30:49-08:00] (orchestration) Ticket 01 done (osxouozu); mvp advanced; launched tickets 02 and 03 in parallel.
+[2026-11-12T19:33:11-08:00] (orchestration) Ticket 02 done (qpvluwxs); mvp advanced; launched ticket 04.
+[2026-11-12T19:34:54-08:00] (orchestration) Ticket 03 done (xzuynlvz); mvp advanced. Waiting on 04 before 05.
+[2026-11-12T19:36:03-08:00] Prompt: PMs should be able to submit Requests too.
+  Response: Sent to the ticket 04 implementer (it touches the header and rebases onto 03's submit flow) to lift PM restrictions on submit.
+[2026-11-12T19:36:57-08:00] (orchestration) Ticket 04 done (uuvvruws, incl. PMs can submit); mvp advanced; launched ticket 05.
+[2026-11-12T19:38:02-08:00] Prompt: Support agents and PMs should also get the Support button.
+  Response: Sent to the ticket 05 implementer (it edits the Problem page) to allow all roles to toggle Support.
+[2026-11-12T19:39:02-08:00] Prompt: Added API key to .env; ensure it's gitignored; only $10 of credit, be careful when testing.
+  Response: jj had auto-snapshotted .env into the local working-copy change (default workspace was still on the planning commit, before .gitignore existed). Rebased the working copy onto mvp (whose .gitignore covers .env) and ran jj file untrack .env. Added an AI-budget rule to the shared implementer notes.
+[2026-11-12T19:40:13-08:00] Prompt: run jj util gc.
+  Response: Ran jj util gc --expire=now.
+[2026-11-12T19:40:19-08:00] (orchestration) Ticket 05 done (mkzwooxx, incl. all roles can toggle Support); mvp advanced; launched 06, 07, 09 in parallel (09 builds seed but does not run it).
+[2026-11-12T19:42:04-08:00] (orchestration) Ticket 06 done (qlypvpwt); mvp advanced. 07 and 09 still running.
+[2026-11-12T19:43:03-08:00] (orchestration) Ticket 07 done (ymxrpkpq); mvp advanced; launched ticket 08.
+[2026-11-12T19:43:07-08:00] Prompt: Yes, abandon old jj op history + gc once the agents finish.
+  Response: Queued for after all implementer agents (08, 09) complete.
+[2026-11-12T19:44:31-08:00] (orchestration) Ticket 09 done (mntszsvy); mvp advanced; main workspace rebased onto mvp and installing deps to run the real seed once.
+[2026-11-12T19:46:58-08:00] (orchestration) Ran real seed once: 26 Requests -> 17 Problems (7 multi-Evidence), 43 AI calls. Ticket 08 done (yyqnwzvl); mvp advanced; all 9 tickets done. Abandoned old jj op history + jj util gc --expire=now; verified the .env blob is gone from the object store. Starting code review of mvp.
+[2026-11-12T19:48:12-08:00] (orchestration) Code review done (standards + spec). Launched single fix implementer in workspace tfix with notes/review-fixes.md.
+[2026-11-12T19:52:38-08:00] (orchestration) Review fixes merged (zqlqzovo). Live smoke test of structured brief + note drafter on Problem #1 succeeded (2 AI calls). Forgot and deleted all agent jj workspaces (kept featureful-ws/notes). Committed prompt log + ticket 09 tick onto mvp.
