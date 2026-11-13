@@ -43,3 +43,9 @@
 [2026-11-12T19:46:58-08:00] (orchestration) Ran real seed once: 26 Requests -> 17 Problems (7 multi-Evidence), 43 AI calls. Ticket 08 done (yyqnwzvl); mvp advanced; all 9 tickets done. Abandoned old jj op history + jj util gc --expire=now; verified the .env blob is gone from the object store. Starting code review of mvp.
 [2026-11-12T19:48:12-08:00] (orchestration) Code review done (standards + spec). Launched single fix implementer in workspace tfix with notes/review-fixes.md.
 [2026-11-12T19:52:38-08:00] (orchestration) Review fixes merged (zqlqzovo). Live smoke test of structured brief + note drafter on Problem #1 succeeded (2 AI calls). Forgot and deleted all agent jj workspaces (kept featureful-ws/notes). Committed prompt log + ticket 09 tick onto mvp.
+[2026-11-12T20:09:38-08:00] Prompt: "This is a solid MVP. How much time has passed?"
+  Response: Computed elapsed time from first prompts.txt entry to now.
+[2026-11-12T20:12:31-08:00] Prompt: Warnings/errors in dev logs while clicking through UI; watch logs, investigate, plan, and fix using relevant matt pocock skills.
+  Response: Read dev-server pane via rex capture; found Base UI nativeButton warning in ProblemFilters; started log monitor; loaded diagnosing-bugs skill.
+[2026-11-12T20:13:55-08:00] Prompt: Reloaded, warning is gone.
+  Response: Committed the nativeButton fix on mvp; log monitor still running for further warnings.

@@ -54,7 +54,7 @@ export function ProblemFilters({
         Apply
       </Button>
       {(q || status) && (
-        <Button size="sm" variant="ghost" render={<Link href={view ? `/?view=${view}` : "/"} />}>
+        <Button size="sm" variant="ghost" nativeButton={false} render={<Link href={view ? `/?view=${view}` : "/"} />}>
           Clear
         </Button>
       )}
