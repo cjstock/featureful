@@ -65,3 +65,16 @@
 [2026-11-12T20:42:40-08:00] (orchestration) Match-review ticket 02 done (wrltrssn); mvp advanced; launched ticket 03.
 [2026-11-12T20:46:41-08:00] (orchestration) Match-review ticket 03 done (ottyoyvs); mvp advanced; main workspace moved onto mvp (dev server hot-reloads; DB auto-migrates). Running live learning-loop check on a scratch DB copy.
 [2026-11-12T20:47:20-08:00] (monitor) Dev server 500s after main workspace moved to new code: "no such table: matching_decisions". Root cause: db connection cached on globalThis survives HMR, and migrations only ran on first open. Fixed getDb to re-run the migrator when the drizzle journal mtime changes; curl repro (PM /review, /problems/1) went 500 -> 200 without restarting.
+[2026-11-12T20:48:03-08:00] (orchestration) Live learning-loop check on scratch DB copy (5 AI calls): cupping Request matched #18; PM Move to #10 with note; distilled Boundary note on #10; follow-up tasting-notes Request then matched #10 citing the PM ruling. Scratch DB deleted. Match-review spec complete on mvp.
+[2026-11-12T21:04:35-08:00] Prompt: Run the seed so the review queue fills up.
+  Response: Ran npm run seed (42 AI calls): 26 Requests -> 16 Problems (6 multi-Evidence), 26 Matching decisions queued for review. Verified /review returns 200 for the PM.
+[2026-11-12T21:12:27-08:00] Prompt: UI pass to add color for readability (black/white theme hard to parse); /grill-with-docs.
+  Response: Surveyed components/theme; started grilling round 1.
+[2026-11-12T21:16:25-08:00] Prompt: UI colour grilling: yes to all except Q6 = no AI-content marking, Q9 = dark mode following the OS plus a header toggle.
+  Response: Frontier empty; no new glossary terms (UI only); summarized for confirmation and proposed one spec + single ticket given remaining time.
+[2026-11-12T21:17:27-08:00] Prompt: /to-spec for colour pass (seam confirmed: pure tone module + Vitest).
+  Response: Wrote .scratch/ui-color/spec.md (ready-for-agent, 20 stories).
+[2026-11-12T21:17:43-08:00] Prompt: /to-tickets for colour pass.
+  Response: Proposed 2 sequential tickets; asked for approval.
+[2026-11-12T21:18:06-08:00] Prompt: Approved 2 colour tickets; go.
+  Response: Wrote .scratch/ui-color/issues/01..02; committed planning to mvp; launched implementer for ticket 01.
