@@ -4,9 +4,9 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The Brief writer is one LLM call taking the Problem, its Evidence, and its score breakdown, and returning markdown
-- [ ] The brief and its generated-at time are stored; viewing never regenerates it
-- [ ] PM-only generate/regenerate action with a loading state
-- [ ] The brief is rendered on the Problem page for Internal stakeholders; hidden from Customers
+- [x] The Brief writer is one LLM call taking the Problem, its Evidence, and its score breakdown, and returning markdown
+- [x] The brief and its generated-at time are stored; viewing never regenerates it
+- [x] PM-only generate/regenerate action with a loading state
+- [x] The brief is rendered on the Problem page for Internal stakeholders; hidden from Customers

@@ -4,6 +4,7 @@ import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
 import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { getProblem, listEvidence } from "@/lib/problems";
+import { getBrief } from "@/lib/brief-writer";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -13,6 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { DecisionBrief } from "@/components/decision-brief";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 import { ScoreBreakdown } from "@/components/score-breakdown";
 import { StatusBadge } from "@/components/status-badge";
@@ -84,6 +86,8 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
           </CardContent>
         </Card>
       )}
+
+      {internal && <DecisionBrief problemId={problem.id} brief={getBrief(db, problem.id)} viewer={person} />}
 
       <Card>
         <CardHeader>
