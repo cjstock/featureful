@@ -4,9 +4,9 @@
 
 **Blocked by:** 05
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] PM-only override action with a 0–100 score and a required note
-- [ ] Clearing the override restores the computed score
-- [ ] The Problem page and internal home list show the override clearly, with the computed score still visible
-- [ ] Support agents and Customers can't override; Customers never see scores
+- [x] PM-only override action with a 0–100 score and a required note
+- [x] Clearing the override restores the computed score
+- [x] The Problem page and internal home list show the override clearly, with the computed score still visible
+- [x] Support agents and Customers can't override; Customers never see scores

@@ -75,7 +75,12 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
             )}
           </CardHeader>
           <CardContent>
-            <ScoreBreakdown problem={problem} priority={priority} supporterCount={supporters.length} />
+            <ScoreBreakdown
+              problem={problem}
+              priority={priority}
+              supporterCount={supporters.length}
+              canOverride={isPm(person)}
+            />
           </CardContent>
         </Card>
       )}

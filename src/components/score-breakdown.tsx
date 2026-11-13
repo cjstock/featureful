@@ -1,6 +1,7 @@
 import type { Problem } from "@/db/schema";
 import type { CriterionKey, PriorityScore } from "@/lib/scoring";
 import { Badge } from "@/components/ui/badge";
+import { ScoreOverrideForm } from "@/components/score-override-form";
 
 export const CRITERION_LABELS: Record<CriterionKey, string> = {
   demand: "Demand",
@@ -38,10 +39,13 @@ export function ScoreBreakdown({
   problem,
   priority,
   supporterCount,
+  canOverride = false,
 }: {
   problem: Problem;
   priority: PriorityScore;
   supporterCount: number;
+  /** PMs only: show the override controls. */
+  canOverride?: boolean;
 }) {
   const weightSum = priority.breakdown.reduce((sum, c) => sum + Math.max(0, c.weight), 0);
   const maxPoints = (weight: number) => (weightSum > 0 ? (Math.max(0, weight) * 100) / weightSum : 0);
@@ -52,13 +56,37 @@ export function ScoreBreakdown({
         <span className="text-3xl font-semibold tabular-nums">{priority.total}</span>
         <span className="text-sm text-muted-foreground">/ 100</span>
         {priority.overridden && (
-          <span className="text-sm text-muted-foreground">
-            Overridden (computed {priority.computedTotal})
-            {problem.overrideNote ? `: ${problem.overrideNote}` : ""}
-          </span>
+          <>
+            <Badge>PM override</Badge>
+            <span className="text-sm text-muted-foreground">
+              Computed score: <span className="tabular-nums">{priority.computedTotal}</span>
+            </span>
+          </>
         )}
         {!priority.evaluated && <Badge variant="outline">Not evaluated</Badge>}
       </div>
+
+      {priority.overridden && (
+        <div className="rounded-md border-l-2 border-primary bg-muted/50 px-3 py-2 text-sm">
+          <div className="font-medium">Override note</div>
+          <p className="whitespace-pre-wrap">{problem.overrideNote ?? "No note."}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            The override is used for sorting; the computed score below still updates as Evidence
+            and Support change.
+          </p>
+        </div>
+      )}
+
+      {canOverride && (
+        <ScoreOverrideForm
+          problemId={problem.id}
+          current={
+            problem.overrideScore === null
+              ? null
+              : { score: problem.overrideScore, note: problem.overrideNote ?? "" }
+          }
+        />
+      )}
 
       {!priority.evaluated && (
         <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">

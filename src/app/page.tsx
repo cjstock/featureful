@@ -151,8 +151,11 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
               <td className="px-3 py-2">
                 <div className="text-lg font-semibold tabular-nums">{priority.total}</div>
                 {priority.overridden && (
-                  <div className="text-xs text-muted-foreground">
-                    Overridden (computed {priority.computedTotal})
+                  <div className="mt-1 space-y-0.5">
+                    <Badge title={problem.overrideNote ?? undefined}>Override</Badge>
+                    <div className="text-xs whitespace-nowrap text-muted-foreground">
+                      Computed {priority.computedTotal}
+                    </div>
                   </div>
                 )}
                 {!priority.evaluated && (
