@@ -61,3 +61,7 @@
   Response: Proposed 3 sequential tickets; asked for approval.
 [2026-11-12T20:33:13-08:00] Prompt: Approved 3 match-review tickets; go.
   Response: Wrote .scratch/match-review/issues/01..03; committed planning on mvp; launched implementer for ticket 01.
+[2026-11-12T20:37:19-08:00] (orchestration) Match-review ticket 01 done (mqmumvpl); mvp advanced; launched ticket 02.
+[2026-11-12T20:42:40-08:00] (orchestration) Match-review ticket 02 done (wrltrssn); mvp advanced; launched ticket 03.
+[2026-11-12T20:46:41-08:00] (orchestration) Match-review ticket 03 done (ottyoyvs); mvp advanced; main workspace moved onto mvp (dev server hot-reloads; DB auto-migrates). Running live learning-loop check on a scratch DB copy.
+[2026-11-12T20:47:20-08:00] (monitor) Dev server 500s after main workspace moved to new code: "no such table: matching_decisions". Root cause: db connection cached on globalThis survives HMR, and migrations only ran on first open. Fixed getDb to re-run the migrator when the drizzle journal mtime changes; curl repro (PM /review, /problems/1) went 500 -> 200 without restarting.

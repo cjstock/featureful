@@ -6,7 +6,7 @@ import * as schema from "./schema";
 
 export type Db = ReturnType<typeof createDb>;
 
-const MIGRATIONS_FOLDER = path.join(process.cwd(), "drizzle");
+export const MIGRATIONS_FOLDER = path.join(process.cwd(), "drizzle");
 
 /**
  * Open a SQLite database at `file` (a path, or ":memory:" for tests) and
