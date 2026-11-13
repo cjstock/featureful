@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MessageSquare } from "lucide-react";
 import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
 import { isInternalStakeholder, isPm } from "@/lib/roles";
@@ -22,7 +23,13 @@ export default async function HomePage({
   const internal = isInternalStakeholder(person);
   const onlySupported = !internal && query.onlySupported;
   const sort = query.sort ?? "priority";
-  const items = listProblems(getDb(), { ...query, sort, onlySupported, viewerId: person.id });
+  const items = listProblems(getDb(), {
+    ...query,
+    sort,
+    onlySupported,
+    viewerId: person.id,
+    viewerIsCustomer: !internal,
+  });
   const filtered = Boolean(query.q || query.status);
 
   return (
@@ -100,7 +107,7 @@ function EmptyState({ filtered, onlySupported }: { filtered: boolean; onlySuppor
 function CustomerList({ items }: { items: ProblemListItem[] }) {
   return (
     <ul className="space-y-3">
-      {items.map(({ problem, supporterCount, supportedByViewer }) => (
+      {items.map(({ problem, supporterCount, supportedByViewer, ownRequestCount }) => (
         <li key={problem.id}>
           <Card className={statusEdgeClass(problem.status)}>
             <div className="space-y-3 px-4">
@@ -108,7 +115,10 @@ function CustomerList({ items }: { items: ProblemListItem[] }) {
                 <Link href={`/problems/${problem.id}`} className="font-medium hover:underline">
                   {problem.title}
                 </Link>
-                <StatusBadge status={problem.status} />
+                <div className="flex items-center gap-2">
+                  {ownRequestCount > 0 && <AskedMarker count={ownRequestCount} />}
+                  <StatusBadge status={problem.status} />
+                </div>
               </div>
               <p className="text-sm text-muted-foreground">{problem.need}</p>
               {problem.decisionNote && (
@@ -126,6 +136,18 @@ function CustomerList({ items }: { items: ProblemListItem[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** Muted "You asked" marker for a Problem I've asked about; deliberately no tone colour. */
+function AskedMarker({ count }: { count: number }) {
+  const hint = `You submitted ${count} ${count === 1 ? "Request" : "Requests"} for this Problem`;
+  return (
+    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={hint}>
+      <MessageSquare className="size-3.5" aria-hidden />
+      You asked
+      <span className="sr-only">: {hint}</span>
+    </span>
   );
 }
 

@@ -31,6 +31,11 @@ export interface ProblemQuery {
   viewerId: number;
   /** Only Problems the viewer supports ("Problems I support"). */
   onlySupported?: boolean;
+  /**
+   * The viewer is a Customer: count their own Requests per Problem (`ownRequestCount`) and,
+   * on "Problems I support", list the Problems they've asked about first.
+   */
+  viewerIsCustomer?: boolean;
 }
 
 export interface ProblemListItem {
@@ -38,6 +43,8 @@ export interface ProblemListItem {
   supporterCount: number;
   evidenceCount: number;
   supportedByViewer: boolean;
+  /** The viewer's own Requests on this Problem (Customer views only; always 0 otherwise). */
+  ownRequestCount: number;
   priority: PriorityScore;
 }
 
@@ -84,6 +91,12 @@ export function listProblems(db: Db, query: ProblemQuery): ProblemListItem[] {
     .from(supports)
     .where(eq(supports.personId, query.viewerId))
     .as("mine");
+  const ownRequests = db
+    .select({ problemId: requests.problemId, n: count().as("own_n") })
+    .from(requests)
+    .where(query.viewerIsCustomer ? eq(requests.authorId, query.viewerId) : sql`0`)
+    .groupBy(requests.problemId)
+    .as("own_requests");
 
   const where: SQL[] = [];
   if (query.q) {
@@ -104,11 +117,13 @@ export function listProblems(db: Db, query: ProblemQuery): ProblemListItem[] {
       supporterCount: sql<number>`coalesce(${supporterCounts.n}, 0)`,
       evidenceCount: sql<number>`coalesce(${evidenceCounts.n}, 0)`,
       supportedByViewer: sql<number>`${mine.problemId} is not null`,
+      ownRequestCount: sql<number>`coalesce(${ownRequests.n}, 0)`,
     })
     .from(problems)
     .leftJoin(supporterCounts, eq(supporterCounts.problemId, problems.id))
     .leftJoin(evidenceCounts, eq(evidenceCounts.problemId, problems.id))
     .leftJoin(mine, eq(mine.problemId, problems.id))
+    .leftJoin(ownRequests, eq(ownRequests.problemId, problems.id))
     .where(where.length ? and(...where) : undefined)
     .all();
 
@@ -117,6 +132,7 @@ export function listProblems(db: Db, query: ProblemQuery): ProblemListItem[] {
     supporterCount: Number(r.supporterCount),
     evidenceCount: Number(r.evidenceCount),
     supportedByViewer: Boolean(r.supportedByViewer),
+    ownRequestCount: Number(r.ownRequestCount),
     priority: priorityOf(r.problem, Number(r.supporterCount)),
   }));
 
@@ -127,7 +143,13 @@ export function listProblems(db: Db, query: ProblemQuery): ProblemListItem[] {
     support: (a, b) => b.supporterCount - a.supporterCount || newest(a, b),
     newest,
   };
-  return items.sort(sorters[query.sort ?? "priority"]);
+  const sort = sorters[query.sort ?? "priority"];
+  if (query.viewerIsCustomer && query.onlySupported) {
+    const askedFirst = (a: ProblemListItem, b: ProblemListItem) =>
+      Number(b.ownRequestCount > 0) - Number(a.ownRequestCount > 0);
+    return items.sort((a, b) => askedFirst(a, b) || sort(a, b));
+  }
+  return items.sort(sort);
 }
 
 export function getProblem(db: Db, problemId: number) {

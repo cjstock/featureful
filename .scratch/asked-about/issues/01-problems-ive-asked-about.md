@@ -4,10 +4,10 @@
 
 **Blocked by:** colour ticket 02 (`.scratch/ui-color/issues/02-priority-criteria-roles-review-colours.md`), since both touch the Customer card
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `listProblems` returns each item's count of the viewer's own Requests for Customer views; "Problems I support" orders asked-about first, then by the chosen sort; All Problems is not reordered
-- [ ] Search and Status filter still apply
-- [ ] Customer card shows a muted "You asked" marker with an icon and a hover hint ("You submitted N Request(s) for this Problem"); no strong colour
-- [ ] Vitest tests on `listProblems` with in-memory SQLite cover the spec's cases
-- [ ] Typecheck, vitest, eslint and next build pass
+- [x] `listProblems` returns each item's count of the viewer's own Requests for Customer views; "Problems I support" orders asked-about first, then by the chosen sort; All Problems is not reordered
+- [x] Search and Status filter still apply
+- [x] Customer card shows a muted "You asked" marker with an icon and a hover hint ("You submitted N Request(s) for this Problem"); no strong colour
+- [x] Vitest tests on `listProblems` with in-memory SQLite cover the spec's cases
+- [x] Typecheck, vitest, eslint and next build pass
