@@ -78,3 +78,14 @@
   Response: Proposed 2 sequential tickets; asked for approval.
 [2026-11-12T21:18:06-08:00] Prompt: Approved 2 colour tickets; go.
   Response: Wrote .scratch/ui-color/issues/01..02; committed planning to mvp; launched implementer for ticket 01.
+[2026-11-12T21:18:20-08:00] Prompt: How much time has passed?
+  Response: Computed elapsed time since first prompt (18:35).
+[2026-11-12T21:20:17-08:00] Prompt: Customer "Problems I support": float Problems they created to the top with a subtle indicator; /grill-with-docs.
+  Response: Challenged "created" against glossary (Customers submit Requests; Problems aren't created by people); asked round 1.
+[2026-11-12T21:20:57-08:00] Prompt: Yes to all ("Problems I've asked about" = any Problem with their Request as Evidence; float on "Problems I support"; subtle "You asked" marker on both Customer tabs; after colour ticket 02); /to-spec.
+  Response: Added "Problem I've asked about" to GLOSSARY.md; proposing test seam.
+[2026-11-12T21:21:21-08:00] Seam confirmed (listProblems on in-memory SQLite). Wrote .scratch/asked-about/spec.md and a single ticket blocked by colour ticket 02.
+[2026-11-12T21:21:39-08:00] Prompt: /to-tickets for asked-about spec.
+  Response: Presented the existing single-ticket breakdown for approval.
+[2026-11-12T21:21:50-08:00] Prompt: Approved asked-about ticket; go.
+  Response: Committed asked-about spec/ticket + glossary term to mvp; ticket queued behind colour ticket 02.

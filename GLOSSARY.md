@@ -22,6 +22,10 @@ _Avoid_: Duplicates, linked requests
 A person's declaration that a Problem matters to them; each person supports a given Problem at most once, and submitting a Request attached to a Problem counts as supporting it.
 _Avoid_: Vote, upvote, like
 
+**Problem I've asked about**:
+From a Customer's point of view, a Problem with at least one of their own Requests as Evidence. People never "create" Problems; their Requests are attached to them.
+_Avoid_: My Problem, Problem I created, my idea
+
 ### Matching
 
 **Matcher**:
