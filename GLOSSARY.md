@@ -22,6 +22,28 @@ _Avoid_: Duplicates, linked requests
 A person's declaration that a Problem matters to them; each person supports a given Problem at most once, and submitting a Request attached to a Problem counts as supporting it.
 _Avoid_: Vote, upvote, like
 
+### Matching
+
+**Matcher**:
+What proposes, for a new Request, whether it shares the underlying need of an existing Problem or needs a new one.
+_Avoid_: Deduper, classifier, AI
+
+**Matching decision**:
+The record of what the Matcher proposed for a Request (a match with confidence and reason, or a new Problem) and what the submitter chose.
+_Avoid_: Match result, suggestion
+
+**Match review**:
+A PM's verdict on a Matching decision: Confirm, Move (to another existing Problem), or Split (into a new Problem), with an optional note.
+_Avoid_: Correction, override, triage
+
+**Matching example**:
+A reviewed Matching decision that the Matcher learns from when judging new Requests.
+_Avoid_: Training data, few-shot, feedback
+
+**Boundary note**:
+A short statement on a Problem of what it does and does not cover, distilled from Match reviews, that the Matcher reads alongside the Problem.
+_Avoid_: Scope note, rule, description
+
 ### Evaluation
 
 **Product Strategy**:
