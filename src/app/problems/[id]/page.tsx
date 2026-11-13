@@ -7,6 +7,7 @@ import { getProblem, listEvidence } from "@/lib/problems";
 import { STATUS_LABELS } from "@/lib/statuses";
 import { getBrief } from "@/lib/brief-writer";
 import { Badge } from "@/components/ui/badge";
+import { roleTone } from "@/lib/tones";
 import {
   Card,
   CardAction,
@@ -49,7 +50,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
       <header className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={problem.status} />
-          <span className="text-sm text-muted-foreground">{supporterLabel(supporters.length)}</span>
+          <span className="text-sm font-medium text-primary">{supporterLabel(supporters.length)}</span>
         </div>
         <h1 className="font-heading text-2xl font-semibold">{problem.title}</h1>
         <p className="text-muted-foreground">{problem.need}</p>
@@ -165,7 +166,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
               <ul className="flex flex-wrap gap-2">
                 {supporters.map((s) => (
                   <li key={s.id}>
-                    <Badge variant="secondary">
+                    <Badge tone={roleTone(s.role)}>
                       {s.name} · {ROLE_LABELS[s.role]}
                     </Badge>
                   </li>

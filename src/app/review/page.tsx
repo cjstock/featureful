@@ -11,7 +11,9 @@ import {
   VERDICT_LABELS,
   type MatchingDecisionItem,
 } from "@/lib/match-review";
+import { confidenceTone, verdictTone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
+import { TONE_STYLES } from "@/components/tone-styles";
 import { MatchReviewControls } from "@/components/match-review-controls";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -109,8 +111,10 @@ function DecisionCard({
 }) {
   const { request, submitter, proposal, review } = item;
   const { match } = proposal;
+  // "Mine is different": the submitter rejected the proposed match, the most telling decisions.
+  const differs = item.submitterChoice === "rejected";
   return (
-    <Card>
+    <Card className={cn(differs && ["border-l-4", TONE_STYLES.caution.edge])}>
       <CardHeader>
         <CardTitle>{request.title}</CardTitle>
         <CardDescription>
@@ -134,7 +138,9 @@ function DecisionCard({
                         : null
                     }
                   />{" "}
-                  <Badge variant="outline">{Math.round(match.confidence * 100)}% confident</Badge>
+                  <Badge tone={confidenceTone(match.confidence)}>
+                    {Math.round(match.confidence * 100)}% confident
+                  </Badge>
                 </p>
                 <p className="text-muted-foreground">{match.reason}</p>
               </>
@@ -149,7 +155,15 @@ function DecisionCard({
           </dd>
 
           <dt className="text-muted-foreground">Submitter chose</dt>
-          <dd>{SUBMITTER_CHOICE_LABELS[item.submitterChoice]}</dd>
+          <dd>
+            {differs ? (
+              <Badge tone="caution" className="h-auto whitespace-normal">
+                {SUBMITTER_CHOICE_LABELS[item.submitterChoice]}
+              </Badge>
+            ) : (
+              SUBMITTER_CHOICE_LABELS[item.submitterChoice]
+            )}
+          </dd>
 
           <dt className="text-muted-foreground">Current Problem</dt>
           <dd>
@@ -161,7 +175,7 @@ function DecisionCard({
               <dt className="text-muted-foreground">Match review</dt>
               <dd className="space-y-1">
                 <p>
-                  <Badge>{VERDICT_LABELS[review.verdict]}</Badge>
+                  <Badge tone={verdictTone(review.verdict)}>{VERDICT_LABELS[review.verdict]}</Badge>
                   {review.verdict !== "confirm" && (
                     <>
                       {" "}

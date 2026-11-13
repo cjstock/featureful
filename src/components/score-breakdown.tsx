@@ -1,6 +1,7 @@
 import type { Problem } from "@/db/schema";
 import { CRITERION_LABELS, type CriterionKey, type PriorityScore } from "@/lib/scoring";
-import { Badge } from "@/components/ui/badge";
+import { CriterionMeter } from "@/components/criterion-meter";
+import { NotEvaluatedBadge, OverrideBadge, ScoreChip } from "@/components/score-chip";
 import { ScoreOverrideForm } from "@/components/score-override-form";
 
 const INVERTED_NOTE: Partial<Record<CriterionKey, string>> = {
@@ -45,21 +46,21 @@ export function ScoreBreakdown({
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline gap-3">
-        <span className="text-3xl font-semibold tabular-nums">{priority.total}</span>
+        <ScoreChip priority={priority} size="lg" className="self-center" />
         <span className="text-sm text-muted-foreground">/ 100</span>
         {priority.overridden && (
           <>
-            <Badge>PM override</Badge>
+            <OverrideBadge>PM override</OverrideBadge>
             <span className="text-sm text-muted-foreground">
               Computed score: <span className="tabular-nums">{priority.computedTotal}</span>
             </span>
           </>
         )}
-        {!priority.evaluated && <Badge variant="outline">Not evaluated</Badge>}
+        {!priority.evaluated && <NotEvaluatedBadge />}
       </div>
 
       {priority.overridden && (
-        <div className="rounded-md border-l-2 border-primary bg-muted/50 px-3 py-2 text-sm">
+        <div className="rounded-md border-l-2 border-l-tone-override bg-muted/50 px-3 py-2 text-sm">
           <div className="font-medium">Override note</div>
           <p className="whitespace-pre-wrap">{problem.overrideNote ?? "No note."}</p>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -81,7 +82,7 @@ export function ScoreBreakdown({
       )}
 
       {!priority.evaluated && (
-        <p className="rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground">
+        <p className="rounded-md border border-dashed border-tone-neutral px-3 py-2 text-sm text-muted-foreground">
           The AI hasn&apos;t scored this Problem yet, or its last evaluation failed. Until it does, the
           score counts Demand only.
         </p>
@@ -106,8 +107,8 @@ export function ScoreBreakdown({
                     <div className="text-xs text-muted-foreground">{INVERTED_NOTE[c.criterion]}</div>
                   )}
                 </td>
-                <td className="py-2 pr-3 tabular-nums">
-                  {c.score === null ? <span className="text-muted-foreground">–</span> : `${c.score}/5`}
+                <td className="py-2 pr-3">
+                  <CriterionMeter criterion={c.criterion} score={c.score} />
                 </td>
                 <td className="py-2 pr-3">
                   {c.score === null ? (

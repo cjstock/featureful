@@ -7,6 +7,7 @@ import { getCurrentPerson } from "@/lib/identity";
 import { getMatchReview } from "@/lib/match-review-app";
 import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { IdentitySwitcher } from "@/components/identity-switcher";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { parseTheme, THEME_COOKIE } from "@/lib/theme";
@@ -39,11 +40,12 @@ export async function SiteHeader() {
               Match review <Badge variant="secondary">{queueCount}</Badge>
             </Link>
           )}
-          <Link href="/submit" className="text-sm font-medium hover:underline">
+          <Button size="sm" nativeButton={false} render={<Link href="/submit" />}>
             Submit a Request
-          </Link>
+          </Button>
           <IdentitySwitcher
             currentId={current.id}
+            currentRole={current.role}
             options={everyone.map((p) => ({
               id: p.id,
               label: `${p.name} (${ROLE_LABELS[p.role]})`,

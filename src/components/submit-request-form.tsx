@@ -9,6 +9,7 @@ import {
   type DecisionInput,
 } from "@/app/actions/requests";
 import type { Proposal } from "@/lib/intake";
+import { confidenceTone } from "@/lib/tones";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -159,7 +160,7 @@ export function SubmitRequestForm() {
           <CardHeader>
             <CardDescription>
               This looks like an existing Problem{" "}
-              <Badge variant="secondary">
+              <Badge tone={confidenceTone(proposal.match.confidence)}>
                 {Math.round(proposal.match.confidence * 100)}% confident
               </Badge>
             </CardDescription>

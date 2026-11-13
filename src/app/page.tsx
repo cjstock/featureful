@@ -5,7 +5,7 @@ import { isInternalStakeholder, isPm } from "@/lib/roles";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 import { listProblems, parseProblemQuery, type ProblemListItem } from "@/lib/problems";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
+import { NotEvaluatedBadge, OverrideBadge, ScoreChip } from "@/components/score-chip";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProblemFilters } from "@/components/problem-filters";
 import { StatusBadge, statusEdgeClass } from "@/components/status-badge";
@@ -118,7 +118,7 @@ function CustomerList({ items }: { items: ProblemListItem[] }) {
                 </p>
               )}
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-sm text-muted-foreground">{supporterLabel(supporterCount)}</span>
+                <span className="text-sm font-medium text-primary">{supporterLabel(supporterCount)}</span>
                 <SupportButton problemId={problem.id} supported={supportedByViewer} />
               </div>
             </div>
@@ -149,19 +149,19 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
           {items.map(({ problem, supporterCount, evidenceCount, priority, supportedByViewer }) => (
             <tr key={problem.id} className="border-t align-top">
               <td className={cn("px-3 py-2", statusEdgeClass(problem.status))}>
-                <div className="text-lg font-semibold tabular-nums">{priority.total}</div>
+                <ScoreChip priority={priority} />
                 {priority.overridden && (
                   <div className="mt-1 space-y-0.5">
-                    <Badge title={problem.overrideNote ?? undefined}>Override</Badge>
+                    <OverrideBadge note={problem.overrideNote} />
                     <div className="text-xs whitespace-nowrap text-muted-foreground">
                       Computed {priority.computedTotal}
                     </div>
                   </div>
                 )}
                 {!priority.evaluated && (
-                  <Badge variant="outline" className="mt-1">
-                    Not evaluated
-                  </Badge>
+                  <div className="mt-1">
+                    <NotEvaluatedBadge />
+                  </div>
                 )}
               </td>
               <td className="px-3 py-2">
@@ -179,7 +179,7 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
               <td className="px-3 py-2">
                 <StatusBadge status={problem.status} />
               </td>
-              <td className="px-3 py-2 text-right tabular-nums">{supporterCount}</td>
+              <td className="px-3 py-2 text-right font-semibold text-primary tabular-nums">{supporterCount}</td>
               <td className="px-3 py-2 text-right tabular-nums">{evidenceCount}</td>
               <td className="px-3 py-2 text-right">
                 <SupportButton problemId={problem.id} supported={supportedByViewer} compact />

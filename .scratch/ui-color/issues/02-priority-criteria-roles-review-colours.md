@@ -4,12 +4,12 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Shared score chip and five-dot criterion meter components, driven only by the tone module (no hard-coded colours)
-- [ ] Internal home table and Problem page use the score chip; the Override badge is violet; Not evaluated is dashed grey
-- [ ] Score breakdown uses the criterion meter, with Effort and Risk inverted
-- [ ] Identity switcher role chip: Customer teal, Support agent sky-blue, PM espresso (distinct from the Support-count accent)
-- [ ] Review queue: verdict badges (Confirm green, Move blue, Split amber), confidence chip by band, "mine is different" highlighted
-- [ ] Every coloured element keeps its text label; checked in light and dark
-- [ ] Typecheck, vitest, eslint and next build pass
+- [x] Shared score chip and five-dot criterion meter components, driven only by the tone module (no hard-coded colours)
+- [x] Internal home table and Problem page use the score chip; the Override badge is violet; Not evaluated is dashed grey
+- [x] Score breakdown uses the criterion meter, with Effort and Risk inverted
+- [x] Identity switcher role chip: Customer teal, Support agent sky-blue, PM espresso (distinct from the Support-count accent)
+- [x] Review queue: verdict badges (Confirm green, Move blue, Split amber), confidence chip by band, "mine is different" highlighted
+- [x] Every coloured element keeps its text label; checked in light and dark
+- [x] Typecheck, vitest, eslint and next build pass
