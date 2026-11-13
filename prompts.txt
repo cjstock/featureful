@@ -1,0 +1,22 @@
+[2026-11-12T18:35:55-08:00] Prompt: Read ASSIGNMENT.md (AI-first Feature Intelligence System, ~3h MVP, limited tokens, jj VCS, stack TBD), then run /mattpocock-skills:setup-matt-pocock-skills with those constraints in mind.
+  Response: Read assignment; explored repo (GitHub remote cjstock/featureful, jj colocated, no docs/, triage skill present); began setup skill, asking issue-tracker choice.
+[2026-11-12T18:36:29-08:00] Setup answers: local markdown issue tracker, default triage labels.
+  Response: Wrote docs/agents/{issue-tracker,triage-labels,domain}.md, created .scratch/, added Version control (jj) + Agent skills sections to CLAUDE.md.
+[2026-11-12T18:45:18-08:00] Prompt: /grill-with-docs (grilling + domain-modeling).
+  Response: Started grilling session, round 1 on stack, AI focal point, domain model, users/auth, deploy.
+[2026-11-12T18:51:49-08:00] Prompt: Yes to all round-1 grilling answers; seed data = coffee enthusiast app (roast/bean/brew/recipe tracking).
+  Response: Recorded decisions, wrote initial GLOSSARY.md, asked round 2 (domain model, matching, scoring, status).
+[2026-11-12T19:02:36-08:00] Prompt: Round 2 answers: yes Q1/Q3/Q5; Q2 yes but note the no-embeddings matching doesn't scale; Q4 add Risk criterion; Q6 home page differs by role (internal = full detail, end users = problem/status/support).
+  Response: Updated GLOSSARY.md, wrote ADR 0001 on LLM full-list matching, asked round 3.
+[2026-11-12T19:12:06-08:00] Prompt: Round 3 answers: yes to all; Q6 testing scope is a token-limit concession, not a time one.
+  Response: Added scoring criteria (Demand, Impact, Strategic fit, Effort, Risk) to GLOSSARY.md; frontier empty, presented shared-understanding summary for confirmation.
+[2026-11-12T19:15:49-08:00] Prompt: Not deploying; local-only, README.md must include local run instructions. Run /to-spec.
+  Response: Started to-spec; proposed test seam (pure priority scoring module) for confirmation.
+[2026-11-12T19:17:13-08:00] Seam answer: also test intake with injected fake Matcher.
+  Response: Wrote .scratch/mvp/spec.md (Status: ready-for-agent) with two test seams: pure Priority scoring + Intake (fake Matcher, in-memory SQLite).
+[2026-11-12T19:18:01-08:00] Prompt: /to-tickets.
+  Response: Drafted 9 vertical-slice tickets from .scratch/mvp/spec.md with blocking edges; asked user to approve breakdown.
+[2026-11-12T19:21:00-08:00] Prompt: Approved ticket breakdown.
+  Response: Wrote 9 ticket files to .scratch/mvp/issues/01..09 (Status: ready-for-agent) with blocking edges.
+[2026-11-12T19:21:41-08:00] Prompt: Commit the planning work with jj.
+  Response: Split working copy: kept ASSIGNMENT.md + .gitignore removal in the existing "chore(assignment)" change; committed planning docs (CLAUDE.md agent skills, GLOSSARY, ADR, docs/agents, spec, tickets, prompts.txt) as a separate change.
