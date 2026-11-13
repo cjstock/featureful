@@ -1,8 +1,8 @@
 # Featureful
 
-An AI-first feature intelligence system. Customers and Support agents submit
-Requests; the AI turns them into underlying Problems, scores them, and helps a
-PM decide. See `GLOSSARY.md` for the vocabulary. Runs locally only.
+An AI-first feature intelligence system. Everyone (Customers, Support agents
+and PMs) can submit Requests and toggle their Support on Problems; the AI turns
+Requests into underlying Problems, scores them, and helps a PM decide. See `GLOSSARY.md` for the vocabulary. Runs locally only.
 
 ## Prerequisites
 

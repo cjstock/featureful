@@ -16,14 +16,6 @@ import { scorePriority, type PriorityScore } from "@/lib/scoring";
 export const SORTS = ["priority", "support", "newest"] as const;
 export type Sort = (typeof SORTS)[number];
 
-export const STATUS_LABELS: Record<Status, string> = {
-  open: "Open",
-  planned: "Planned",
-  in_progress: "In progress",
-  shipped: "Shipped",
-  declined: "Declined",
-};
-
 export const SORT_LABELS: Record<Sort, string> = {
   priority: "Priority",
   support: "Most supported",

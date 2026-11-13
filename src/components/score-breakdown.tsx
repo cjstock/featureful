@@ -1,15 +1,7 @@
 import type { Problem } from "@/db/schema";
-import type { CriterionKey, PriorityScore } from "@/lib/scoring";
+import { CRITERION_LABELS, type CriterionKey, type PriorityScore } from "@/lib/scoring";
 import { Badge } from "@/components/ui/badge";
 import { ScoreOverrideForm } from "@/components/score-override-form";
-
-export const CRITERION_LABELS: Record<CriterionKey, string> = {
-  demand: "Demand",
-  impact: "Impact",
-  strategicFit: "Strategic fit",
-  effort: "Effort",
-  risk: "Risk",
-};
 
 const INVERTED_NOTE: Partial<Record<CriterionKey, string>> = {
   effort: "lower Effort scores higher",

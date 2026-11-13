@@ -3,22 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
+import { idSchema, message, type Result } from "@/lib/action-result";
 import { requireRole } from "@/lib/identity";
 import { evaluateAllProblems, evaluateProblem } from "@/lib/evaluator";
 import { saveProductStrategy } from "@/lib/product-strategy";
-
-type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
-
-function message(error: unknown) {
-  if (error instanceof z.ZodError) return error.issues[0]?.message ?? "Invalid input";
-  return error instanceof Error ? error.message : "Something went wrong";
-}
 
 /** PM only: re-run the Evaluator on one Problem now. */
 export async function reevaluateProblem(problemId: number): Promise<Result> {
   try {
     await requireRole("pm");
-    await evaluateProblem(getDb(), z.number().int().positive().parse(problemId));
+    await evaluateProblem(getDb(), idSchema.parse(problemId));
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {

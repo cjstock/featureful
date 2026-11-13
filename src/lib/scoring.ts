@@ -14,6 +14,15 @@ import { DEFAULT_WEIGHTS, type Weights } from "./scoring-config";
 
 export type CriterionKey = keyof Weights;
 
+/** Display names for the criteria (UI and AI prompts). */
+export const CRITERION_LABELS: Record<CriterionKey, string> = {
+  demand: "Demand",
+  impact: "Impact",
+  strategicFit: "Strategic fit",
+  effort: "Effort",
+  risk: "Risk",
+};
+
 const CRITERIA: readonly CriterionKey[] = ["demand", "impact", "strategicFit", "effort", "risk"];
 
 /** Lower is better for these, so they are inverted (6 − score) before weighting. */

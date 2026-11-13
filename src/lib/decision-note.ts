@@ -1,11 +1,13 @@
 import { eq } from "drizzle-orm";
-import { generateText } from "ai";
+import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { problems, STATUSES, type Status } from "@/db/schema";
 import { model } from "@/lib/ai";
 import { getBrief } from "@/lib/brief-writer";
-import { getProblem, listEvidence, STATUS_LABELS } from "@/lib/problems";
+import { formatEvidence, type PromptEvidence } from "@/lib/evidence-prompt";
+import { getProblem, listEvidence } from "@/lib/problems";
+import { STATUS_LABELS } from "@/lib/statuses";
 
 /**
  * Status changes and Decision notes. A PM changes a Problem's Status and attaches a Decision note
@@ -44,29 +46,25 @@ Write 2–4 short sentences, in plain friendly prose, addressed to Customers ("y
 - Give the honest reason, grounded in the Decision brief (if given) and the Evidence. For Declined, be respectful and, where sensible, mention a workaround or what could change the decision.
 - Never promise dates, never reveal internal scores, weights, Priority numbers, other customers' names or internal deliberation, and never quote Evidence verbatim.
 
-Output only the note text: no greeting, no sign-off, no markdown headings.`;
+Put only the note text in the "note" field: no greeting, no sign-off, no markdown headings.`;
 
 export interface NoteDrafterInput {
   problem: { title: string; need: string; status: Status; decisionNote: string | null };
   targetStatus: Status;
   /** The stored Decision brief markdown, if one has been generated. */
   brief: string | null;
-  evidence: { title: string; description: string }[];
+  /** No author names: the note is Customer-facing. */
+  evidence: Omit<PromptEvidence, "authorName">[];
 }
 
-/** Most Evidence shown to the model; keeps the prompt bounded on popular Problems. */
-const MAX_EVIDENCE = 30;
+const noteSchema = z.object({
+  note: z.string().describe("The Decision note text only: 2–4 short sentences"),
+});
 
-/** One LLM call returning a draft Decision note. Writes nothing. Works without a brief. */
+/** One structured-output LLM call returning a draft Decision note. Writes nothing. Works without a brief. */
 export async function runNoteDrafter(input: NoteDrafterInput): Promise<string> {
   const { problem, targetStatus, brief, evidence } = input;
-  const shown = evidence.slice(0, MAX_EVIDENCE);
-  const evidenceText =
-    shown.length === 0
-      ? "(no Evidence yet)"
-      : shown.map((r, i) => `${i + 1}. ${r.title}: ${r.description.replace(/\s+/g, " ")}`).join("\n");
-
-  const { text } = await generateText({
+  const { output } = await generateText({
     model,
     system: SYSTEM,
     prompt: [
@@ -78,12 +76,13 @@ export async function runNoteDrafter(input: NoteDrafterInput): Promise<string> {
       "",
       `Decision brief:\n${brief ?? "(no brief generated; rely on the Problem and its Evidence)"}`,
       "",
-      `Evidence (${evidence.length} Requests${evidence.length > shown.length ? `, first ${shown.length} shown` : ""}):\n${evidenceText}`,
+      formatEvidence(evidence),
     ]
       .filter((line) => line !== null)
       .join("\n"),
+    output: Output.object({ schema: noteSchema }),
   });
-  const note = text.trim();
+  const note = output.note.trim();
   if (!note) throw new Error("The Decision note drafter returned an empty note");
   return note;
 }

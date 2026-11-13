@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { STATUSES, type Status } from "@/db/schema";
-import { SORTS, SORT_LABELS, STATUS_LABELS, type Sort } from "@/lib/problems";
+import { SORTS, SORT_LABELS, type Sort } from "@/lib/problems";
+import { STATUS_LABELS } from "@/lib/statuses";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 

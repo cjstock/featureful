@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
+import { idSchema, message, type Result } from "@/lib/action-result";
 import { getCurrentPerson } from "@/lib/identity";
 import { createIntake, type Confirmation, type Proposal } from "@/lib/intake";
 import { llmMatcher } from "@/lib/intake/llm-matcher";
@@ -15,7 +16,7 @@ const draftSchema = z.object({
 });
 
 const decisionSchema = z.union([
-  z.object({ attachTo: z.number().int().positive() }),
+  z.object({ attachTo: idSchema }),
   z.object({
     createProblem: z.object({
       title: z.string().trim().min(1).max(200),
@@ -26,7 +27,6 @@ const decisionSchema = z.union([
 
 export type RequestDraftInput = z.input<typeof draftSchema>;
 export type DecisionInput = z.input<typeof decisionSchema>;
-type Result<T> = { ok: true } & T | { ok: false; error: string };
 
 /** Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent. */
 function onEvidenceAdded({ problemId }: Confirmation) {
@@ -36,11 +36,6 @@ function onEvidenceAdded({ problemId }: Confirmation) {
 
 function intake() {
   return createIntake({ db: getDb(), matcher: llmMatcher, onEvidenceAdded });
-}
-
-function message(error: unknown) {
-  if (error instanceof z.ZodError) return error.issues[0]?.message ?? "Invalid input";
-  return error instanceof Error ? error.message : "Something went wrong";
 }
 
 /** Step 1: ask the AI to match the Request. Saves nothing. */

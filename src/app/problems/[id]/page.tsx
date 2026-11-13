@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
 import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
-import { getProblem, listEvidence, STATUS_LABELS } from "@/lib/problems";
+import { getProblem, listEvidence } from "@/lib/problems";
+import { STATUS_LABELS } from "@/lib/statuses";
 import { getBrief } from "@/lib/brief-writer";
 import { Badge } from "@/components/ui/badge";
 import {

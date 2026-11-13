@@ -1,5 +1,5 @@
 import type { Status } from "@/db/schema";
-import { STATUS_LABELS } from "@/lib/problems";
+import { STATUS_LABELS } from "@/lib/statuses";
 import { Badge } from "@/components/ui/badge";
 
 const VARIANT: Record<Status, "default" | "secondary" | "outline" | "destructive"> = {

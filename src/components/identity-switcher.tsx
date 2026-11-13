@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { switchIdentity } from "@/app/actions/identity";
 import {
   Select,
@@ -20,27 +20,40 @@ export function IdentitySwitcher({
   currentId: number;
 }) {
   const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const items = options.map((o) => ({ value: String(o.id), label: o.label }));
 
   return (
-    <Select
-      items={items}
-      value={String(currentId)}
-      disabled={pending}
-      onValueChange={(value) => {
-        if (value) startTransition(() => switchIdentity(Number(value)));
-      }}
-    >
-      <SelectTrigger aria-label="Who are you?" className="min-w-52">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {items.map((item) => (
-          <SelectItem key={item.value} value={item.value}>
-            {item.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <span className="inline-flex flex-col items-end gap-1">
+      <Select
+        items={items}
+        value={String(currentId)}
+        disabled={pending}
+        onValueChange={(value) => {
+          if (!value) return;
+          startTransition(async () => {
+            setError(null);
+            const result = await switchIdentity(Number(value));
+            if (!result.ok) setError(result.error);
+          });
+        }}
+      >
+        <SelectTrigger aria-label="Who are you?" className="min-w-52">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {items.map((item) => (
+            <SelectItem key={item.value} value={item.value}>
+              {item.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error && (
+        <span role="alert" className="text-xs text-destructive">
+          {error}
+        </span>
+      )}
+    </span>
   );
 }

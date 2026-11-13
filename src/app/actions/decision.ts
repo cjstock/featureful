@@ -3,22 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { STATUSES } from "@/db/schema";
+import { STATUSES, type Status } from "@/db/schema";
+import { idSchema, message, type Result } from "@/lib/action-result";
 import { requireRole } from "@/lib/identity";
 import { changeStatus, draftDecisionNote, type StatusChange } from "@/lib/decision-note";
-
-const idSchema = z.number().int().positive();
-
-function message(error: unknown) {
-  if (error instanceof z.ZodError) return error.issues[0]?.message ?? "Invalid input";
-  return error instanceof Error ? error.message : "Something went wrong";
-}
 
 /** PM only: save a Problem's Status and Decision note together. */
 export async function updateStatus(
   problemId: number,
   input: StatusChange,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<Result> {
   try {
     await requireRole("pm");
     if (!changeStatus(getDb(), idSchema.parse(problemId), input)) {
@@ -35,8 +29,8 @@ export async function updateStatus(
 /** PM only: ask the AI to draft a Customer-facing Decision note (one AI call). Saves nothing. */
 export async function draftNote(
   problemId: number,
-  targetStatus: string,
-): Promise<{ ok: true; note: string } | { ok: false; error: string }> {
+  targetStatus: Status,
+): Promise<Result<{ note: string }>> {
   try {
     await requireRole("pm");
     const note = await draftDecisionNote(

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Sparkles } from "lucide-react";
 import { draftNote, updateStatus } from "@/app/actions/decision";
 import { STATUSES, type Status } from "@/db/schema";
-import { STATUS_LABELS } from "@/lib/problems";
+import { STATUS_LABELS } from "@/lib/statuses";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";

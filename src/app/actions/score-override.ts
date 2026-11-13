@@ -1,19 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { getDb } from "@/db/client";
+import { idSchema, message, type Result } from "@/lib/action-result";
 import { requireRole } from "@/lib/identity";
 import { clearScoreOverride, setScoreOverride, type ScoreOverride } from "@/lib/score-override";
-
-type Result = { ok: true } | { ok: false; error: string };
-
-const idSchema = z.number().int().positive();
-
-function message(error: unknown) {
-  if (error instanceof z.ZodError) return error.issues[0]?.message ?? "Invalid input";
-  return error instanceof Error ? error.message : "Something went wrong";
-}
 
 /** PM only: override a Problem's Priority score (0–100) with a required note. */
 export async function overrideScore(problemId: number, input: ScoreOverride): Promise<Result> {

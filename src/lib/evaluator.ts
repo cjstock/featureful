@@ -4,6 +4,7 @@ import { z } from "zod";
 import type { Db } from "@/db";
 import { problems, requests } from "@/db/schema";
 import { model } from "@/lib/ai";
+import { formatEvidence, type PromptEvidence } from "@/lib/evidence-prompt";
 import { getProductStrategy } from "@/lib/product-strategy";
 
 /**
@@ -40,25 +41,16 @@ export type Evaluation = z.infer<typeof evaluationSchema>;
 
 export interface EvaluatorInput {
   problem: { title: string; need: string };
-  evidence: { title: string; description: string }[];
+  evidence: PromptEvidence[];
   productStrategy: string;
 }
 
-/** Most Evidence shown to the model; keeps the prompt bounded on popular Problems. */
-const MAX_EVIDENCE = 40;
-
 /** One structured-output LLM call. Writes nothing. */
 export async function runEvaluator({ problem, evidence, productStrategy }: EvaluatorInput) {
-  const shown = evidence.slice(0, MAX_EVIDENCE);
-  const evidenceText =
-    shown.length === 0
-      ? "(no Evidence yet)"
-      : shown.map((r, i) => `${i + 1}. ${r.title}\n   ${r.description.replace(/\s+/g, " ")}`).join("\n");
-
   const { output } = await generateText({
     model,
     system: SYSTEM,
-    prompt: `Product Strategy:\n${productStrategy}\n\nProblem: ${problem.title}\nNeed: ${problem.need}\n\nEvidence (${evidence.length} Requests${evidence.length > shown.length ? `, first ${shown.length} shown` : ""}):\n${evidenceText}`,
+    prompt: `Product Strategy:\n${productStrategy}\n\nProblem: ${problem.title}\nNeed: ${problem.need}\n\n${formatEvidence(evidence)}`,
     output: Output.object({ schema: evaluationSchema }),
   });
   return output;
