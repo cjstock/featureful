@@ -41,6 +41,27 @@ identity switcher works.
 If you change `src/db/schema.ts`, generate a new migration with
 `npm run db:generate`. To start over, delete the `data/` folder.
 
+## Seed demo data
+
+```bash
+npm run seed
+```
+
+This wipes the database and rebuilds a coffee-tracking app demo: 8 Customers
+(home roasters and brewers), Support agent Dana, PM Sam, the default Product
+Strategy, and about 25 Requests (with deliberate near-duplicates) submitted
+through the real Intake pipeline, then every Problem is evaluated. Re-running
+it starts over from scratch. The data lives in `scripts/seed-data.ts`.
+
+**It calls the Anthropic API**: one call per Request plus one per Problem,
+about 45 calls in all (a few minutes; roughly $0.50 to $1 with the default
+model). It runs sequentially, never retries a failed call itself, and aborts
+rather than make more than 60 calls (`npm run seed -- --max-ai-calls=<n>` to
+change). It needs `ANTHROPIC_API_KEY` in `.env` and stops immediately without
+it. To check the pipeline offline, `npm run seed -- --dry-run` uses a fake
+Matcher, skips evaluation and writes to an in-memory database (add
+`--db=<path>` to keep it).
+
 ## Run the dev server
 
 ```bash
