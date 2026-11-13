@@ -1,6 +1,7 @@
 import {
   integer,
   primaryKey,
+  real,
   sqliteTable,
   text,
 } from "drizzle-orm/sqlite-core";
@@ -18,6 +19,14 @@ export const STATUSES = [
   "declined",
 ] as const;
 export type Status = (typeof STATUSES)[number];
+
+/** What the submitter did with the Matcher's proposal. */
+export const SUBMITTER_CHOICES = ["accepted", "rejected", "no_match"] as const;
+export type SubmitterChoice = (typeof SUBMITTER_CHOICES)[number];
+
+/** A PM's Match review verdict. */
+export const VERDICTS = ["confirm", "move", "split"] as const;
+export type Verdict = (typeof VERDICTS)[number];
 
 const createdAt = () =>
   integer("created_at", { mode: "timestamp_ms" })
@@ -67,6 +76,9 @@ export const problems = sqliteTable("problems", {
   // Decision brief.
   briefMarkdown: text("brief_markdown"),
   briefGeneratedAt: integer("brief_generated_at", { mode: "timestamp_ms" }),
+
+  /** Boundary note: what this Problem does and does not cover (read by the Matcher). */
+  boundaryNote: text("boundary_note"),
 });
 
 /** A Request is always attached to exactly one Problem (as Evidence). */
@@ -98,9 +110,47 @@ export const supports = sqliteTable(
   (t) => [primaryKey({ columns: [t.personId, t.problemId] })],
 );
 
+/**
+ * Matching decision: what the Matcher proposed for a Request and what the
+ * submitter chose. One per Request. Review fields are null until a PM gives a
+ * Match review; a reviewed row is a Matching example.
+ */
+export const matchingDecisions = sqliteTable("matching_decisions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  requestId: integer("request_id")
+    .notNull()
+    .unique()
+    .references(() => requests.id, { onDelete: "cascade" }),
+
+  // The Matcher's proposal. Match fields are null when it proposed no match.
+  proposedProblemId: integer("proposed_problem_id").references(() => problems.id, {
+    onDelete: "set null",
+  }),
+  confidence: real("confidence"),
+  reason: text("reason"),
+  proposedTitle: text("proposed_title").notNull(),
+  proposedNeed: text("proposed_need").notNull(),
+
+  submitterChoice: text("submitter_choice", { enum: SUBMITTER_CHOICES }).notNull(),
+  createdAt: createdAt(),
+
+  // Match review.
+  verdict: text("verdict", { enum: VERDICTS }),
+  reviewerId: integer("reviewer_id").references(() => people.id),
+  reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+  note: text("note"),
+  fromProblemId: integer("from_problem_id").references(() => problems.id, {
+    onDelete: "set null",
+  }),
+  toProblemId: integer("to_problem_id").references(() => problems.id, {
+    onDelete: "set null",
+  }),
+});
+
 export type Person = typeof people.$inferSelect;
 export type Problem = typeof problems.$inferSelect;
 export type NewProblem = typeof problems.$inferInsert;
 export type Request = typeof requests.$inferSelect;
 export type NewRequest = typeof requests.$inferInsert;
 export type Support = typeof supports.$inferSelect;
+export type MatchingDecision = typeof matchingDecisions.$inferSelect;

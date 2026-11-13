@@ -51,11 +51,11 @@ export function SubmitRequestForm() {
     });
   }
 
-  function confirm(decision: DecisionInput) {
+  function confirm(proposal: Proposal, decision: DecisionInput) {
     const run = () => {
       setError(null);
       startTransition(async () => {
-        const result = await confirmRequest(draft, decision);
+        const result = await confirmRequest(draft, proposal, decision);
         if (!result.ok) {
           setError({ message: result.error, retry: run });
           return;
@@ -168,7 +168,7 @@ export function SubmitRequestForm() {
           <CardContent className="text-sm">{proposal.match.reason}</CardContent>
           <CardFooter className="flex flex-wrap gap-2">
             <Button
-              onClick={() => confirm({ attachTo: proposal.match!.problemId })}
+              onClick={() => confirm(proposal, { attachTo: proposal.match!.problemId })}
               disabled={pending}
             >
               {spinner} Yes, add my Request and Support
@@ -196,7 +196,7 @@ export function SubmitRequestForm() {
           <CardContent className="text-sm">{proposal.newProblem.need}</CardContent>
           <CardFooter className="flex flex-wrap gap-2">
             <Button
-              onClick={() => confirm({ createProblem: proposal.newProblem })}
+              onClick={() => confirm(proposal, { createProblem: proposal.newProblem })}
               disabled={pending}
             >
               {spinner} Create Problem and add my Support

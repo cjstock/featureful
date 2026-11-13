@@ -25,6 +25,22 @@ const decisionSchema = z.union([
   }),
 ]);
 
+/** The proposal from step 1, echoed back by the client so the Matching decision can be recorded. */
+const proposalSchema = z.object({
+  match: z
+    .object({
+      problemId: idSchema,
+      problemTitle: z.string(),
+      confidence: z.number().min(0).max(1),
+      reason: z.string().max(2000),
+    })
+    .nullable(),
+  newProblem: z.object({
+    title: z.string().trim().min(1).max(200),
+    need: z.string().trim().min(1).max(2000),
+  }),
+});
+
 export type RequestDraftInput = z.input<typeof draftSchema>;
 export type DecisionInput = z.input<typeof decisionSchema>;
 
@@ -53,15 +69,21 @@ export async function proposeRequest(
   }
 }
 
-/** Step 2: save the Request on the chosen Problem and add the submitter's Support. */
+/** Step 2: save the Request on the chosen Problem, add the submitter's Support, and record the Matching decision. */
 export async function confirmRequest(
   input: RequestDraftInput,
+  proposal: Proposal,
   decision: DecisionInput,
 ): Promise<Result<{ problemId: number }>> {
   try {
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    const { problemId } = intake().confirm(draft, decisionSchema.parse(decision), person.id);
+    const { problemId } = intake().confirm(
+      draft,
+      proposalSchema.parse(proposal),
+      decisionSchema.parse(decision),
+      person.id,
+    );
     revalidatePath("/", "layout");
     return { ok: true, problemId };
   } catch (error) {

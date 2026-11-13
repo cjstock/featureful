@@ -14,7 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { createDb, DATABASE_PATH, type Db } from "@/db";
-import { people, problems, productStrategy, requests, supports } from "@/db/schema";
+import { matchingDecisions, people, problems, productStrategy, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
 import { llmMatcher } from "@/lib/intake/llm-matcher";
 import { evaluateProblem } from "@/lib/evaluator";
@@ -44,6 +44,7 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 10
 /** Wipe every table and restart ids at 1. */
 function reset(db: Db) {
   db.transaction((tx) => {
+    tx.delete(matchingDecisions).run();
     tx.delete(supports).run();
     tx.delete(requests).run();
     tx.delete(problems).run();
@@ -106,11 +107,12 @@ async function main() {
       fail(`Matcher failed on "${seed.title}" (not retried).`);
     }
     const decision = proposal.match ? { attachTo: proposal.match.problemId } : { createProblem: proposal.newProblem };
-    const { problemId, requestId, createdProblem } = intake.confirm(draft, decision, authorId);
+    const { problemId, requestId, createdProblem } = intake.confirm(draft, proposal, decision, authorId);
 
     // Backdate so the demo has a history.
     const at = daysAgo(seed.daysAgo);
     db.update(requests).set({ createdAt: at }).where(eq(requests.id, requestId)).run();
+    db.update(matchingDecisions).set({ createdAt: at }).where(eq(matchingDecisions.requestId, requestId)).run();
     db.update(supports)
       .set({ createdAt: at })
       .where(and(eq(supports.personId, authorId), eq(supports.problemId, problemId)))

@@ -1,6 +1,12 @@
 import { asc, eq } from "drizzle-orm";
 import type { Db } from "@/db";
-import { problems, requests, supports } from "@/db/schema";
+import {
+  matchingDecisions,
+  problems,
+  requests,
+  supports,
+  type SubmitterChoice,
+} from "@/db/schema";
 
 /** A Request as typed by the submitter, before it is saved. */
 export type RequestDraft = { title: string; description: string };
@@ -40,6 +46,14 @@ export type Proposal = {
 
 /** The submitter's choice: attach to an existing Problem, or create a new one. */
 export type Decision = { attachTo: number } | { createProblem: NewProblemStatement };
+
+/** Derive what the submitter did with the proposal from what they chose. */
+export function submitterChoiceOf(proposal: Proposal, decision: Decision): SubmitterChoice {
+  if (!proposal.match) return "no_match";
+  return "attachTo" in decision && decision.attachTo === proposal.match.problemId
+    ? "accepted"
+    : "rejected";
+}
 
 export type Confirmation = {
   problemId: number;
@@ -82,10 +96,16 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
   }
 
   /**
-   * Save the Request as Evidence on the chosen Problem (creating it if needed)
-   * and add the submitter's Support, idempotently.
+   * Save the Request as Evidence on the chosen Problem (creating it if needed),
+   * add the submitter's Support idempotently, and record the Matching decision:
+   * `proposal` (from `propose`) plus what the submitter chose.
    */
-  function confirm(request: RequestDraft, decision: Decision, personId: number): Confirmation {
+  function confirm(
+    request: RequestDraft,
+    proposal: Proposal,
+    decision: Decision,
+    personId: number,
+  ): Confirmation {
     const confirmation = db.transaction((tx) => {
       let problemId: number;
       if ("attachTo" in decision) {
@@ -109,6 +129,22 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
         .returning({ id: requests.id })
         .get().id;
       tx.insert(supports).values({ personId, problemId }).onConflictDoNothing().run();
+      const { match } = proposal;
+      // The proposed Problem may have been deleted since `propose`; keep the rest of the proposal.
+      const proposedProblemId =
+        match &&
+        tx.select({ id: problems.id }).from(problems).where(eq(problems.id, match.problemId)).get()?.id;
+      tx.insert(matchingDecisions)
+        .values({
+          requestId,
+          proposedProblemId: proposedProblemId ?? null,
+          confidence: match?.confidence ?? null,
+          reason: match?.reason ?? null,
+          proposedTitle: proposal.newProblem.title,
+          proposedNeed: proposal.newProblem.need,
+          submitterChoice: submitterChoiceOf(proposal, decision),
+        })
+        .run();
       return { problemId, requestId, createdProblem: !("attachTo" in decision) };
     });
     onEvidenceAdded?.(confirmation);

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDb, type Db } from "@/db";
-import { people, problems, requests, supports } from "@/db/schema";
+import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
 
 function setup(matcher: Matcher) {
@@ -67,11 +67,7 @@ describe("Intake.confirm", () => {
     const { db, alex, grinder, intake } = setup(matchProblem());
     const proposal = await intake.propose(request);
 
-    const result = intake.confirm(
-      request,
-      { attachTo: proposal.match!.problemId },
-      alex.id,
-    );
+    const result = intake.confirm(request, proposal, { attachTo: proposal.match!.problemId }, alex.id);
 
     expect(result).toMatchObject({ problemId: grinder.id, createdProblem: false });
     const after = snapshot(db);
@@ -86,7 +82,7 @@ describe("Intake.confirm", () => {
     const { db, alex, grinder, intake } = setup(matchProblem());
     const proposal = await intake.propose(request);
 
-    const result = intake.confirm(request, { createProblem: proposal.newProblem }, alex.id);
+    const result = intake.confirm(request, proposal, { createProblem: proposal.newProblem }, alex.id);
 
     expect(result.createdProblem).toBe(true);
     expect(result.problemId).not.toBe(grinder.id);
@@ -104,7 +100,7 @@ describe("Intake.confirm", () => {
     const proposal = await intake.propose(request);
     expect(proposal.match).toBeNull();
 
-    const result = intake.confirm(request, { createProblem: proposal.newProblem }, alex.id);
+    const result = intake.confirm(request, proposal, { createProblem: proposal.newProblem }, alex.id);
 
     const after = snapshot(db);
     expect(after.problems).toHaveLength(2);
@@ -117,9 +113,11 @@ describe("Intake.confirm", () => {
     const { db, alex, grinder, intake } = setup(matchProblem());
     db.insert(supports).values({ personId: alex.id, problemId: grinder.id }).run();
 
-    intake.confirm(request, { attachTo: grinder.id }, alex.id);
+    const proposal = await intake.propose(request);
+    intake.confirm(request, proposal, { attachTo: grinder.id }, alex.id);
     intake.confirm(
       { title: "Grind log", description: "Same again, different words." },
+      proposal,
       { attachTo: grinder.id },
       alex.id,
     );
@@ -135,8 +133,87 @@ describe("Intake.confirm", () => {
     const calls: unknown[] = [];
     const intake = createIntake({ db, matcher: noMatch, onEvidenceAdded: (c) => calls.push(c) });
 
-    const result = intake.confirm(request, { createProblem: NEW_PROBLEM }, alex.id);
+    const result = intake.confirm(
+      request,
+      { match: null, newProblem: NEW_PROBLEM },
+      { createProblem: NEW_PROBLEM },
+      alex.id,
+    );
 
     expect(calls).toEqual([result]);
+  });
+});
+
+describe("Intake.confirm records a Matching decision", () => {
+  const decisions = (db: Db) => db.select().from(matchingDecisions).all();
+
+  it("match accepted: stores the proposal and choice 'accepted'", async () => {
+    const { db, alex, grinder, intake } = setup(matchProblem(0.8));
+    const proposal = await intake.propose(request);
+
+    const { requestId } = intake.confirm(request, proposal, { attachTo: grinder.id }, alex.id);
+
+    expect(decisions(db)).toMatchObject([
+      {
+        requestId,
+        proposedProblemId: grinder.id,
+        confidence: 0.8,
+        reason: "Same need: remembering grind.",
+        proposedTitle: NEW_PROBLEM.title,
+        proposedNeed: NEW_PROBLEM.need,
+        submitterChoice: "accepted",
+        verdict: null,
+        reviewerId: null,
+        reviewedAt: null,
+        note: null,
+        fromProblemId: null,
+        toProblemId: null,
+      },
+    ]);
+  });
+
+  it("match rejected (\"mine is different\"): keeps the rejected match and choice 'rejected'", async () => {
+    const { db, alex, grinder, intake } = setup(matchProblem());
+    const proposal = await intake.propose(request);
+
+    const { requestId } = intake.confirm(
+      request,
+      proposal,
+      { createProblem: proposal.newProblem },
+      alex.id,
+    );
+
+    expect(decisions(db)).toMatchObject([
+      {
+        requestId,
+        proposedProblemId: grinder.id,
+        confidence: 0.9,
+        submitterChoice: "rejected",
+      },
+    ]);
+  });
+
+  it("no match: stores the proposed new Problem and choice 'no_match'", async () => {
+    const { db, alex, intake } = setup(noMatch);
+    const proposal = await intake.propose(request);
+
+    const { requestId } = intake.confirm(
+      request,
+      proposal,
+      { createProblem: proposal.newProblem },
+      alex.id,
+    );
+
+    expect(decisions(db)).toMatchObject([
+      {
+        requestId,
+        proposedProblemId: null,
+        confidence: null,
+        reason: null,
+        proposedTitle: NEW_PROBLEM.title,
+        proposedNeed: NEW_PROBLEM.need,
+        submitterChoice: "no_match",
+      },
+    ]);
   });
 });
