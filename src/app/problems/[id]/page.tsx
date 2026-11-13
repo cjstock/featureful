@@ -15,6 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { BoundaryNoteEditor } from "@/components/boundary-note-editor";
 import { DecisionBrief } from "@/components/decision-brief";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 import { ScoreBreakdown } from "@/components/score-breakdown";
@@ -73,6 +74,25 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
           </CardContent>
         )}
       </Card>
+
+      {internal && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Boundary note</CardTitle>
+            <CardDescription>
+              {problem.boundaryNote
+                ? "What this Problem does and does not cover. The Matcher reads it; Customers don't see it."
+                : "No Boundary note yet. Match reviews are distilled into one here."}
+            </CardDescription>
+          </CardHeader>
+          {(problem.boundaryNote || isPm(person)) && (
+            <CardContent className="space-y-3">
+              {problem.boundaryNote && <p className="whitespace-pre-wrap text-sm">{problem.boundaryNote}</p>}
+              {isPm(person) && <BoundaryNoteEditor problemId={problem.id} note={problem.boundaryNote} />}
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {internal && (
         <Card>

@@ -4,12 +4,12 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The production BoundaryNoteWriter is one structured-output call; on failure the existing note is kept
-- [ ] Distillation runs in the background once per affected, still-existing Problem after Move, Split, or Confirm-with-note; Confirm without a note makes no call
-- [ ] Intake passes Boundary notes to the Matcher; the LLM Matcher prompt includes them; the Intake test asserts they're passed
-- [ ] The Problem page shows the Boundary note to Internal stakeholders and hides it from Customers
-- [ ] A PM-only `updateBoundaryNote` action and inline editor
-- [ ] The README briefly describes the review queue and how the Matcher learns
-- [ ] Typecheck, vitest, eslint, and next build pass
+- [x] The production BoundaryNoteWriter is one structured-output call; on failure the existing note is kept
+- [x] Distillation runs in the background once per affected, still-existing Problem after Move, Split, or Confirm-with-note; Confirm without a note makes no call
+- [x] Intake passes Boundary notes to the Matcher; the LLM Matcher prompt includes them; the Intake test asserts they're passed
+- [x] The Problem page shows the Boundary note to Internal stakeholders and hides it from Customers
+- [x] A PM-only `updateBoundaryNote` action and inline editor
+- [x] The README briefly describes the review queue and how the Matcher learns
+- [x] Typecheck, vitest, eslint, and next build pass

@@ -62,20 +62,18 @@ export type BoundaryNoteInput = {
   review: {
     request: { title: string; description: string };
     verdict: Verdict;
-    fromProblem: { title: string } | null;
-    toProblem: { title: string } | null;
+    /** Source and destination of a Move or Split (null for Confirm, or once deleted). */
+    fromProblem: { id: number; title: string } | null;
+    toProblem: { id: number; title: string } | null;
     note: string | null;
   };
 };
 
 /**
  * AI dependency: revises a Problem's Boundary note from one Match review
- * ("Includes … Does not include …", at most 3 sentences). Wired up in a later ticket.
+ * ("Includes … Does not include …", at most 3 sentences). Production: `llmBoundaryNoteWriter`.
  */
 export type BoundaryNoteWriter = (input: BoundaryNoteInput) => Promise<string>;
-
-/** Placeholder until the production BoundaryNoteWriter exists: keeps the current note. */
-export const keepBoundaryNote: BoundaryNoteWriter = async ({ currentNote }) => currentNote ?? "";
 
 export type MatchReviewDeps = { db: Db; boundaryNoteWriter: BoundaryNoteWriter };
 
@@ -171,9 +169,82 @@ export function listMatchingExamples(db: Db, limit = MAX_MATCHING_EXAMPLES): Mat
   ], limit);
 }
 
-/** Match review: the PM's queue of Matching decisions and the Confirm, Move, and Split actions. */
-// The BoundaryNoteWriter is injected now; distillation after a review arrives in a later ticket.
-export function createMatchReview({ db }: MatchReviewDeps) {
+/** A PM's direct edit of a Problem's Boundary note (blank clears it). False if no such Problem. */
+export function setBoundaryNote(db: Db, problemId: number, note: string): boolean {
+  return (
+    db
+      .update(problems)
+      .set({ boundaryNote: note.trim() || null })
+      .where(eq(problems.id, problemId))
+      .run().changes > 0
+  );
+}
+
+/**
+ * Match review: the PM's queue of Matching decisions, the Confirm, Move, and Split actions, and
+ * distilling each review into the affected Problems' Boundary notes.
+ */
+export function createMatchReview({ db, boundaryNoteWriter }: MatchReviewDeps) {
+  /**
+   * Distil a reviewed Matching decision into the Boundary note of each affected Problem that
+   * still exists (Confirm: the Request's Problem; Move/Split: source and destination), one
+   * BoundaryNoteWriter call each. Confirm without a note makes no call. Meant to run in the
+   * background after `review`. Never throws: on a failed call that Problem's note stays as it was,
+   * and a note the PM edited while the call ran is not overwritten.
+   */
+  async function distilBoundaryNotes(decisionId: number): Promise<void> {
+    const [item] = list(db, eq(matchingDecisions.id, decisionId), []);
+    const review = item?.review;
+    if (!review || (review.verdict === "confirm" && !review.note)) return;
+    const affected =
+      review.verdict === "confirm"
+        ? [item.currentProblem.id]
+        : [review.fromProblem?.id, review.toProblem?.id].filter((id): id is number => id != null);
+
+    for (const problemId of affected) {
+      const problem = db
+        .select({
+          id: problems.id,
+          title: problems.title,
+          need: problems.need,
+          boundaryNote: problems.boundaryNote,
+        })
+        .from(problems)
+        .where(eq(problems.id, problemId))
+        .get();
+      if (!problem) continue;
+      const { boundaryNote: currentNote, ...summary } = problem;
+      try {
+        const revised = (
+          await boundaryNoteWriter({
+            problem: summary,
+            currentNote,
+            review: {
+              request: { title: item.request.title, description: item.request.description },
+              verdict: review.verdict,
+              fromProblem: review.fromProblem,
+              toProblem: review.toProblem,
+              note: review.note,
+            },
+          })
+        ).trim();
+        if (!revised) continue;
+        db.update(problems)
+          .set({ boundaryNote: revised })
+          .where(
+            and(
+              eq(problems.id, problemId),
+              currentNote === null
+                ? isNull(problems.boundaryNote)
+                : eq(problems.boundaryNote, currentNote),
+            ),
+          )
+          .run();
+      } catch (error) {
+        console.error(`Boundary note distillation failed for Problem ${problemId}`, error);
+      }
+    }
+  }
 
   /**
    * Give a Match review, in one transaction. Confirm records the verdict only. Move (to
@@ -276,6 +347,7 @@ export function createMatchReview({ db }: MatchReviewDeps) {
 
   return {
     review,
+    distilBoundaryNotes,
 
     /** Unreviewed Matching decisions, newest first. */
     listQueue: () =>

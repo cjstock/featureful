@@ -71,6 +71,21 @@ npm run dev
 Open http://localhost:3000 and pick who you are from the switcher in the
 header. Your choice is stored in a cookie.
 
+## Match review: how the Matcher learns
+
+Every submitted Request records a Matching decision: what the Matcher proposed
+and what the submitter chose. PMs work through these in the review queue
+(**Match review** in the header, `/review`) and Confirm, Move (to another
+Problem) or Split (into a new Problem) each one, with an optional note. Moving
+or splitting relocates the Request and its Support and re-evaluates the
+affected Problems.
+
+The Matcher learns from these reviews in its prompt (ADR 0002): it sees up to
+20 recent Matching examples, corrections first, and each Problem's Boundary
+note, a short "Includes … Does not include …" statement that the AI distils
+from every Move, Split, or Confirm with a note. Internal stakeholders see the
+Boundary note on the Problem page, and PMs can edit it there.
+
 ## Tests and checks
 
 ```bash

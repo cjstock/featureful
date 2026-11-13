@@ -18,7 +18,9 @@ Your job, for one new Request:
 
 If you match, give your confidence (0 to 1) and a one-line reason a submitter can judge, naming the shared need.
 
-You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.`;
+You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.
+
+Some Problems have a Boundary note, written from the PM's reviews, saying what that Problem does and does not cover. Treat it as the PM's ruling: never match a Request to a Problem whose Boundary note excludes its need.`;
 
 const schema = z.object({
   matchedProblemId: z
@@ -69,7 +71,13 @@ export const llmMatcher: Matcher = async (request, problems, examples) => {
   const list =
     problems.length === 0
       ? "(none yet)"
-      : problems.map((p) => `- id ${p.id}: ${p.title} — ${p.need}`).join("\n");
+      : problems
+          .map(
+            (p) =>
+              `- id ${p.id}: ${p.title} — ${p.need}` +
+              (p.boundaryNote ? `\n  Boundary note: ${p.boundaryNote}` : ""),
+          )
+          .join("\n");
 
   const examplesSection =
     examples.length === 0

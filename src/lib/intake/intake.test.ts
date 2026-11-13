@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import { createDb, type Db } from "@/db";
 import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher, type MatchingExample } from "@/lib/intake";
@@ -266,3 +267,21 @@ describe("Intake passes Matching examples to the Matcher", () => {
 function setupTarget(db: Db) {
   return db.insert(problems).values({ title: "Taste", need: "I need to taste." }).returning().get();
 }
+
+describe("Intake passes Boundary notes to the Matcher", () => {
+  it("each Problem summary carries its Boundary note, or null when it has none", async () => {
+    let seen: Parameters<Matcher>[1] = [];
+    const spy: Matcher = async (_r, list) => ((seen = list), { match: null, newProblem: NEW_PROBLEM });
+    const { db, grinder, intake } = setup(spy);
+    const note = "Includes remembering grind settings. Does not include grinder maintenance.";
+    db.update(problems).set({ boundaryNote: note }).where(eq(problems.id, grinder.id)).run();
+    const taste = setupTarget(db);
+
+    await intake.propose(request);
+
+    expect(seen).toEqual([
+      { id: grinder.id, title: grinder.title, need: grinder.need, boundaryNote: note },
+      { id: taste.id, title: "Taste", need: "I need to taste.", boundaryNote: null },
+    ]);
+  });
+});

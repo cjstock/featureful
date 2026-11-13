@@ -1,8 +1,8 @@
 import { getDb } from "@/db/client";
-import { createMatchReview, keepBoundaryNote } from "@/lib/match-review";
+import { llmBoundaryNoteWriter } from "@/lib/boundary-note-writer";
+import { createMatchReview } from "@/lib/match-review";
 
-/** The app's Match review module (server only), wired to the app db and BoundaryNoteWriter. */
+/** The app's Match review module (server only), wired to the app db and the AI BoundaryNoteWriter. */
 export function getMatchReview() {
-  // Ticket 03 swaps in the production (AI) BoundaryNoteWriter here.
-  return createMatchReview({ db: getDb(), boundaryNoteWriter: keepBoundaryNote });
+  return createMatchReview({ db: getDb(), boundaryNoteWriter: llmBoundaryNoteWriter });
 }
