@@ -1,43 +1,177 @@
-import { desc } from "drizzle-orm";
+import Link from "next/link";
 import { getDb } from "@/db/client";
-import { problems } from "@/db/schema";
+import type { Person } from "@/db/schema";
 import { getCurrentPerson } from "@/lib/identity";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { isInternalStakeholder } from "@/lib/roles";
+import { listProblems, parseProblemQuery, type ProblemListItem } from "@/lib/problems";
+import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProblemFilters } from "@/components/problem-filters";
+import { StatusBadge } from "@/components/status-badge";
+import { SupportButton } from "@/components/support-button";
+import { supporterLabel } from "@/components/supporter-count";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const person = await getCurrentPerson();
-  const all = getDb().select().from(problems).orderBy(desc(problems.createdAt)).all();
+  const query = parseProblemQuery(await searchParams);
+  const internal = isInternalStakeholder(person);
+  const onlySupported = !internal && query.onlySupported;
+  const sort = query.sort ?? "priority";
+  const items = listProblems(getDb(), { ...query, sort, onlySupported, viewerId: person.id });
+  const filtered = Boolean(query.q || query.status);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-2xl font-semibold">Problems</h1>
-        <p className="text-muted-foreground">Signed in as {person.name}.</p>
+        <p className="text-muted-foreground">
+          {internal
+            ? "Every Problem with its Priority score, Demand and Evidence."
+            : "What people have asked for. Support the Problems that matter to you."}
+        </p>
       </div>
-      {all.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No Problems yet</CardTitle>
-            <CardDescription>
-              Problems appear here once someone submits a Request.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+
+      {!internal && <CustomerTabs onlySupported={onlySupported} />}
+
+      <ProblemFilters
+        q={query.q}
+        status={query.status}
+        sort={sort}
+        view={onlySupported ? "supported" : undefined}
+      />
+
+      {items.length === 0 ? (
+        <EmptyState filtered={filtered} onlySupported={onlySupported} />
+      ) : internal ? (
+        <InternalList items={items} />
       ) : (
-        <ul className="space-y-3">
-          {all.map((p) => (
-            <li key={p.id}>
-              <Card>
-                <CardHeader>
-                  <CardTitle>{p.title}</CardTitle>
-                  <CardDescription>{p.need}</CardDescription>
-                </CardHeader>
-                <CardContent />
-              </Card>
-            </li>
-          ))}
-        </ul>
+        <CustomerList items={items} person={person} />
       )}
+    </div>
+  );
+}
+
+function CustomerTabs({ onlySupported }: { onlySupported: boolean }) {
+  const tab = (active: boolean) =>
+    cn(
+      "rounded-md px-3 py-1.5 text-sm font-medium",
+      active ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground",
+    );
+  return (
+    <nav className="flex gap-1" aria-label="Problem views">
+      <Link href="/" className={tab(!onlySupported)} aria-current={!onlySupported ? "page" : undefined}>
+        All Problems
+      </Link>
+      <Link
+        href="/?view=supported"
+        className={tab(onlySupported)}
+        aria-current={onlySupported ? "page" : undefined}
+      >
+        Problems I support
+      </Link>
+    </nav>
+  );
+}
+
+function EmptyState({ filtered, onlySupported }: { filtered: boolean; onlySupported: boolean }) {
+  const [title, body] = filtered
+    ? ["No matching Problems", "Try a different keyword or Status."]
+    : onlySupported
+      ? ["You don't support any Problems yet", "Support a Problem to follow it here."]
+      : ["No Problems yet", "Problems appear here once someone submits a Request."];
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{body}</CardDescription>
+      </CardHeader>
+    </Card>
+  );
+}
+
+function CustomerList({ items, person }: { items: ProblemListItem[]; person: Person }) {
+  return (
+    <ul className="space-y-3">
+      {items.map(({ problem, supporterCount, supportedByViewer }) => (
+        <li key={problem.id}>
+          <Card>
+            <div className="space-y-3 px-4">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <Link href={`/problems/${problem.id}`} className="font-medium hover:underline">
+                  {problem.title}
+                </Link>
+                <StatusBadge status={problem.status} />
+              </div>
+              <p className="text-sm text-muted-foreground">{problem.need}</p>
+              {problem.decisionNote && (
+                <p className="rounded-md border-l-2 bg-muted/50 px-3 py-2 text-sm">
+                  <span className="font-medium">Decision note: </span>
+                  {problem.decisionNote}
+                </p>
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm text-muted-foreground">{supporterLabel(supporterCount)}</span>
+                {person.role === "customer" && (
+                  <SupportButton problemId={problem.id} supported={supportedByViewer} />
+                )}
+              </div>
+            </div>
+          </Card>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function InternalList({ items }: { items: ProblemListItem[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
+      <table className="w-full text-sm">
+        <thead className="bg-muted/50 text-left text-muted-foreground">
+          <tr>
+            <th className="px-3 py-2 font-medium">Priority</th>
+            <th className="px-3 py-2 font-medium">Problem</th>
+            <th className="px-3 py-2 font-medium">Status</th>
+            <th className="px-3 py-2 text-right font-medium">Supporters</th>
+            <th className="px-3 py-2 text-right font-medium">Evidence</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map(({ problem, supporterCount, evidenceCount, priority }) => (
+            <tr key={problem.id} className="border-t align-top">
+              <td className="px-3 py-2">
+                <div className="text-lg font-semibold tabular-nums">{priority.total}</div>
+                {priority.overridden && (
+                  <div className="text-xs text-muted-foreground">
+                    Overridden (computed {priority.computedTotal})
+                  </div>
+                )}
+                {!priority.evaluated && (
+                  <Badge variant="outline" className="mt-1">
+                    Not evaluated
+                  </Badge>
+                )}
+              </td>
+              <td className="px-3 py-2">
+                <Link href={`/problems/${problem.id}`} className="font-medium hover:underline">
+                  {problem.title}
+                </Link>
+                <p className="line-clamp-2 text-muted-foreground">{problem.need}</p>
+              </td>
+              <td className="px-3 py-2">
+                <StatusBadge status={problem.status} />
+              </td>
+              <td className="px-3 py-2 text-right tabular-nums">{supporterCount}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{evidenceCount}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

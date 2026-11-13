@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
-import { requireRole } from "@/lib/identity";
+import { getCurrentPerson } from "@/lib/identity";
 import { createIntake, type Confirmation, type Proposal } from "@/lib/intake";
 import { llmMatcher } from "@/lib/intake/llm-matcher";
 
@@ -48,7 +48,8 @@ export async function proposeRequest(
   input: RequestDraftInput,
 ): Promise<Result<{ proposal: Proposal }>> {
   try {
-    await requireRole("customer", "support_agent");
+    // Every role (Customer, Support agent, PM) may submit Requests.
+    await getCurrentPerson();
     const draft = draftSchema.parse(input);
     return { ok: true, proposal: await intake().propose(draft) };
   } catch (error) {
@@ -63,7 +64,7 @@ export async function confirmRequest(
   decision: DecisionInput,
 ): Promise<Result<{ problemId: number }>> {
   try {
-    const person = await requireRole("customer", "support_agent");
+    const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
     const { problemId } = intake().confirm(draft, decisionSchema.parse(decision), person.id);
     revalidatePath("/", "layout");

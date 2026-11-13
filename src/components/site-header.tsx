@@ -17,11 +17,9 @@ export async function SiteHeader() {
           Featureful
         </Link>
         <nav className="flex items-center gap-4">
-          {current.role !== "pm" && (
-            <Link href="/submit" className="text-sm font-medium hover:underline">
-              Submit a Request
-            </Link>
-          )}
+          <Link href="/submit" className="text-sm font-medium hover:underline">
+            Submit a Request
+          </Link>
           <IdentitySwitcher
             currentId={current.id}
             options={everyone.map((p) => ({

@@ -4,12 +4,12 @@
 
 **Blocked by:** 01, 02
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The home page branches on the current person's role
-- [ ] Keyword search over Problem title/need, a Status filter, and sorting by priority / support / newest
-- [ ] Priority uses the scoring module (02), with Demand computed live from the supporter count
-- [ ] Customers can add and remove Support with one click; they can't Support the same Problem twice
-- [ ] On the Problem page, Customers see the statement, Status, support count, Decision note, and only their own Requests; never other Customers' Request text, scores, or briefs
-- [ ] On the Problem page, Internal stakeholders see the statement, all Evidence (author and text), supporters, Status, and Decision note
-- [ ] UI copy keeps "Support" (the action) distinct from "Support agent" (the role)
+- [x] The home page branches on the current person's role
+- [x] Keyword search over Problem title/need, a Status filter, and sorting by priority / support / newest
+- [x] Priority uses the scoring module (02), with Demand computed live from the supporter count
+- [x] Customers can add and remove Support with one click; they can't Support the same Problem twice
+- [x] On the Problem page, Customers see the statement, Status, support count, Decision note, and only their own Requests; never other Customers' Request text, scores, or briefs
+- [x] On the Problem page, Internal stakeholders see the statement, all Evidence (author and text), supporters, Status, and Decision note
+- [x] UI copy keeps "Support" (the action) distinct from "Support agent" (the role)

@@ -1,10 +1,6 @@
-import { getCurrentPerson } from "@/lib/identity";
 import { SubmitRequestForm } from "@/components/submit-request-form";
 
-export default async function SubmitPage() {
-  const person = await getCurrentPerson();
-  const canSubmit = person.role === "customer" || person.role === "support_agent";
-
+export default function SubmitPage() {
   return (
     <div className="max-w-2xl space-y-6">
       <div>
@@ -14,14 +10,7 @@ export default async function SubmitPage() {
           Problem someone has already raised.
         </p>
       </div>
-      {canSubmit ? (
-        <SubmitRequestForm />
-      ) : (
-        <p className="text-muted-foreground">
-          Only Customers and Support agents submit Requests. Switch identity in the header to
-          try it.
-        </p>
-      )}
+      <SubmitRequestForm />
     </div>
   );
 }
