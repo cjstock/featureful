@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { asc } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { people } from "@/db/schema";
@@ -7,11 +8,14 @@ import { getMatchReview } from "@/lib/match-review-app";
 import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
 import { IdentitySwitcher } from "@/components/identity-switcher";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { parseTheme, THEME_COOKIE } from "@/lib/theme";
 
 export async function SiteHeader() {
   const current = await getCurrentPerson();
   const db = getDb();
   const everyone = db.select().from(people).orderBy(asc(people.id)).all();
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   const queueCount = isPm(current) ? getMatchReview().countQueue() : 0;
 
   return (
@@ -45,6 +49,7 @@ export async function SiteHeader() {
               label: `${p.name} (${ROLE_LABELS[p.role]})`,
             }))}
           />
+          <ThemeToggle initial={theme} />
         </nav>
       </div>
     </header>

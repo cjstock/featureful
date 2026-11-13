@@ -28,6 +28,14 @@ const CRITERIA: readonly CriterionKey[] = ["demand", "impact", "strategicFit", "
 /** Lower is better for these, so they are inverted (6 − score) before weighting. */
 const INVERTED: ReadonlySet<CriterionKey> = new Set(["effort", "risk"]);
 
+const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
+
+/** A 1–5 criterion score (clamped) on the "higher raises priority" scale: Effort and Risk inverted. */
+export function adjustedScore(criterion: CriterionKey, score: number): number {
+  const bounded = clamp(score, 1, 5);
+  return INVERTED.has(criterion) ? 6 - bounded : bounded;
+}
+
 export interface CriterionBreakdown {
   criterion: CriterionKey;
   /** 1–5 as judged by the AI (Demand: derived from supporter count); null when not evaluated. */
@@ -70,8 +78,6 @@ function demandLevel(supporterCount: number): number {
   return 1;
 }
 
-const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
-
 export function scorePriority(input: ScoringInput): PriorityScore {
   const weights = input.weights ?? DEFAULT_WEIGHTS;
   const weightSum = CRITERIA.reduce((sum, key) => sum + Math.max(0, weights[key]), 0);
@@ -88,8 +94,7 @@ export function scorePriority(input: ScoringInput): PriorityScore {
     const weight = weights[criterion];
     const score = raw[criterion];
     if (score === null) return { criterion, score, adjusted: null, weight, points: 0 };
-    const bounded = clamp(score, 1, 5);
-    const adjusted = INVERTED.has(criterion) ? 6 - bounded : bounded;
+    const adjusted = adjustedScore(criterion, score);
     // Normalize (s − 1) / 4, weight, and scale so the weights sum to 100 (one division keeps it exact).
     const points = weightSum > 0 ? ((adjusted - 1) * Math.max(0, weight) * 100) / (4 * weightSum) : 0;
     return { criterion, score, adjusted, weight, points };

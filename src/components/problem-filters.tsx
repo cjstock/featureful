@@ -2,6 +2,10 @@ import Link from "next/link";
 import { STATUSES, type Status } from "@/db/schema";
 import { SORTS, SORT_LABELS, type Sort } from "@/lib/problems";
 import { STATUS_LABELS } from "@/lib/statuses";
+import { statusTone } from "@/lib/tones";
+import { cn } from "@/lib/utils";
+import { statusEdgeClass } from "@/components/status-badge";
+import { TONE_STYLES } from "@/components/tone-styles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -31,10 +35,14 @@ export function ProblemFilters({
       </div>
       <label className="flex items-center gap-1 text-sm text-muted-foreground">
         Status
-        <select name="status" defaultValue={status ?? ""} className={selectClass}>
+        <select
+          name="status"
+          defaultValue={status ?? ""}
+          className={cn(selectClass, status && statusEdgeClass(status))}
+        >
           <option value="">All</option>
           {STATUSES.map((s) => (
-            <option key={s} value={s}>
+            <option key={s} value={s} className={TONE_STYLES[statusTone(s)].badge}>
               {STATUS_LABELS[s]}
             </option>
           ))}

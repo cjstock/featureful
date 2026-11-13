@@ -2,6 +2,12 @@ import { mergeProps } from "@base-ui/react/merge-props"
 import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
+import type { Tone } from "@/lib/tones"
+import { TONE_STYLES } from "@/components/tone-styles"
+
+const toneVariants = Object.fromEntries(
+  Object.entries(TONE_STYLES).map(([tone, styles]) => [tone, styles.badge])
+) as Record<Tone, string>
 
 const badgeVariants = cva(
   "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!",
@@ -19,6 +25,8 @@ const badgeVariants = cva(
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
       },
+      // Semantic colour (see @/lib/tones). When set, it replaces `variant`.
+      tone: toneVariants,
     },
     defaultVariants: {
       variant: "default",
@@ -29,6 +37,7 @@ const badgeVariants = cva(
 function Badge({
   className,
   variant = "default",
+  tone,
   render,
   ...props
 }: useRender.ComponentProps<"span"> & VariantProps<typeof badgeVariants>) {
@@ -36,7 +45,10 @@ function Badge({
     defaultTagName: "span",
     props: mergeProps<"span">(
       {
-        className: cn(badgeVariants({ variant }), className),
+        className: cn(
+          badgeVariants({ variant: tone ? null : variant, tone }),
+          className
+        ),
       },
       props
     ),
@@ -44,6 +56,7 @@ function Badge({
     state: {
       slot: "badge",
       variant,
+      tone,
     },
   })
 }

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ProblemFilters } from "@/components/problem-filters";
-import { StatusBadge } from "@/components/status-badge";
+import { StatusBadge, statusEdgeClass } from "@/components/status-badge";
 import { SupportButton } from "@/components/support-button";
 import { supporterLabel } from "@/components/supporter-count";
 
@@ -102,7 +102,7 @@ function CustomerList({ items }: { items: ProblemListItem[] }) {
     <ul className="space-y-3">
       {items.map(({ problem, supporterCount, supportedByViewer }) => (
         <li key={problem.id}>
-          <Card>
+          <Card className={statusEdgeClass(problem.status)}>
             <div className="space-y-3 px-4">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <Link href={`/problems/${problem.id}`} className="font-medium hover:underline">
@@ -148,7 +148,7 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
         <tbody>
           {items.map(({ problem, supporterCount, evidenceCount, priority, supportedByViewer }) => (
             <tr key={problem.id} className="border-t align-top">
-              <td className="px-3 py-2">
+              <td className={cn("px-3 py-2", statusEdgeClass(problem.status))}>
                 <div className="text-lg font-semibold tabular-nums">{priority.total}</div>
                 {priority.overridden && (
                   <div className="mt-1 space-y-0.5">

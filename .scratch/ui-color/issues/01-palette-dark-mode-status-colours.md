@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Warm light and dark tokens (espresso primary, cream background, warm greys) plus semantic tone tokens (solid, subtle background, and foreground for each tone) in both themes, meeting AA contrast
-- [ ] Theme cookie (system / light / dark, default system); the server sets the dark class for "dark"; an inline head script handles "system" before paint and follows OS changes
-- [ ] Header toggle cycling System → Light → Dark (client component, no new dependency)
-- [ ] Tone module with all mappings from the spec (Priority band, confidence band, criterion helps/hurts with Effort and Risk inverted, Status, verdict, role) and Vitest tests on the edge cases the spec lists
-- [ ] Badge supports tone variants; Status badge, card/row left edge, and Status filter use the Status tones
-- [ ] Typecheck, vitest, eslint and next build pass
+- [x] Warm light and dark tokens (espresso primary, cream background, warm greys) plus semantic tone tokens (solid, subtle background, and foreground for each tone) in both themes, meeting AA contrast
+- [x] Theme cookie (system / light / dark, default system); the server sets the dark class for "dark"; an inline head script handles "system" before paint and follows OS changes
+- [x] Header toggle cycling System → Light → Dark (client component, no new dependency)
+- [x] Tone module with all mappings from the spec (Priority band, confidence band, criterion helps/hurts with Effort and Risk inverted, Status, verdict, role) and Vitest tests on the edge cases the spec lists
+- [x] Badge supports tone variants; Status badge, card/row left edge, and Status filter use the Status tones
+- [x] Typecheck, vitest, eslint and next build pass
