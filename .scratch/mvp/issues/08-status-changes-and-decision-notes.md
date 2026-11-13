@@ -4,10 +4,10 @@
 
 **Blocked by:** 04, 07
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] PM-only Status change action that saves Status and Decision note together
-- [ ] The Decision note drafter is one LLM call taking the Problem, its brief (if present), the target Status, and its Evidence; it works without a brief
-- [ ] The drafted note fills an editable field and is only saved when the PM confirms
-- [ ] The Status filter on the home pages reflects the new Status
-- [ ] The Decision note is visible to Customers and Internal stakeholders
+- [x] PM-only Status change action that saves Status and Decision note together
+- [x] The Decision note drafter is one LLM call taking the Problem, its brief (if present), the target Status, and its Evidence; it works without a brief
+- [x] The drafted note fills an editable field and is only saved when the PM confirms
+- [x] The Status filter on the home pages reflects the new Status
+- [x] The Decision note is visible to Customers and Internal stakeholders

@@ -169,6 +169,12 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
                   {problem.title}
                 </Link>
                 <p className="line-clamp-2 text-muted-foreground">{problem.need}</p>
+                {problem.decisionNote && (
+                  <p className="mt-1 line-clamp-1 text-xs" title={problem.decisionNote}>
+                    <span className="font-medium">Decision note: </span>
+                    {problem.decisionNote}
+                  </p>
+                )}
               </td>
               <td className="px-3 py-2">
                 <StatusBadge status={problem.status} />

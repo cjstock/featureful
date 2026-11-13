@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
 import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
-import { getProblem, listEvidence } from "@/lib/problems";
+import { getProblem, listEvidence, STATUS_LABELS } from "@/lib/problems";
 import { getBrief } from "@/lib/brief-writer";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -18,6 +18,7 @@ import { DecisionBrief } from "@/components/decision-brief";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 import { ScoreBreakdown } from "@/components/score-breakdown";
 import { StatusBadge } from "@/components/status-badge";
+import { StatusChangeForm } from "@/components/status-change-form";
 import { SupportButton } from "@/components/support-button";
 import { supporterLabel } from "@/components/supporter-count";
 
@@ -57,9 +58,19 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
         <CardHeader>
           <CardTitle>Decision note</CardTitle>
           <CardDescription>
-            {problem.decisionNote ?? "No decision yet. Supporters will see the PM's note here."}
+            {problem.decisionNote
+              ? `Why this Problem is ${STATUS_LABELS[problem.status]}.`
+              : "No decision yet. Supporters will see the PM's note here."}
           </CardDescription>
         </CardHeader>
+        {(problem.decisionNote || isPm(person)) && (
+          <CardContent className="space-y-3">
+            {problem.decisionNote && <p className="whitespace-pre-wrap text-sm">{problem.decisionNote}</p>}
+            {isPm(person) && (
+              <StatusChangeForm problemId={problem.id} status={problem.status} note={problem.decisionNote} />
+            )}
+          </CardContent>
+        )}
       </Card>
 
       {internal && (
