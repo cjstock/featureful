@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb, type Db } from "@/db";
 import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
-import { createIntake, type Matcher } from "@/lib/intake";
+import { createIntake, type Matcher, type MatchingExample } from "@/lib/intake";
+import { createMatchReview } from "@/lib/match-review";
 
 function setup(matcher: Matcher) {
   const db = createDb(":memory:");
@@ -217,3 +218,51 @@ describe("Intake.confirm records a Matching decision", () => {
     ]);
   });
 });
+
+describe("Intake passes Matching examples to the Matcher", () => {
+  afterEach(() => vi.useRealTimers());
+
+  it("up to 20 reviewed decisions, corrections first, then most recently reviewed", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    let clock = Date.parse("2026-11-01T09:00:00Z");
+    const tick = () => vi.setSystemTime((clock += 60_000));
+
+    const { db, alex, grinder, intake } = setup(noMatch);
+    const [sam] = db.insert(people).values({ name: "Sam", role: "pm" }).returning().all();
+    const review = createMatchReview({ db, boundaryNoteWriter: async () => "" });
+    const place = async (title: string) => {
+      const draft = { title, description: `${title}.` };
+      const { requestId } = intake.confirm(draft, await intake.propose(draft), { attachTo: grinder.id }, alex.id);
+      return db.select().from(matchingDecisions).all().find((d) => d.requestId === requestId)!.id;
+    };
+
+    await place("Unreviewed"); // keeps the Problem alive and stays out of the examples
+    // Reviewed in this order: a Split, then 25 Confirms, then a Move.
+    const split = await place("Split me");
+    tick();
+    review.review(split, "split", { newProblem: NEW_PROBLEM, note: "Different need." }, sam.id);
+    for (let i = 0; i < 25; i++) {
+      const id = await place(`Confirm ${i}`);
+      tick();
+      review.review(id, "confirm", {}, sam.id);
+    }
+    const moved = await place("Move me");
+    tick();
+    review.review(moved, "move", { targetProblemId: (await setupTarget(db)).id, note: "Belongs there." }, sam.id);
+
+    let seen: MatchingExample[] = [];
+    const spy: Matcher = async (_r, _p, examples) => ((seen = examples), { match: null, newProblem: NEW_PROBLEM });
+    await createIntake({ db, matcher: spy }).propose(request);
+
+    expect(seen.map((e) => e.request.title)).toEqual([
+      "Move me",
+      "Split me",
+      ...Array.from({ length: 18 }, (_, i) => `Confirm ${24 - i}`),
+    ]);
+    expect(seen[0].review).toMatchObject({ verdict: "move", note: "Belongs there." });
+  });
+});
+
+function setupTarget(db: Db) {
+  return db.insert(problems).values({ title: "Taste", need: "I need to taste." }).returning().get();
+}

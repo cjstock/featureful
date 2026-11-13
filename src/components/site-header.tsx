@@ -3,7 +3,7 @@ import { asc } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { people } from "@/db/schema";
 import { getCurrentPerson } from "@/lib/identity";
-import { createMatchReview } from "@/lib/match-review";
+import { getMatchReview } from "@/lib/match-review-app";
 import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { Badge } from "@/components/ui/badge";
 import { IdentitySwitcher } from "@/components/identity-switcher";
@@ -12,7 +12,7 @@ export async function SiteHeader() {
   const current = await getCurrentPerson();
   const db = getDb();
   const everyone = db.select().from(people).orderBy(asc(people.id)).all();
-  const queueCount = isPm(current) ? createMatchReview({ db }).countQueue() : 0;
+  const queueCount = isPm(current) ? getMatchReview().countQueue() : 0;
 
   return (
     <header className="border-b">

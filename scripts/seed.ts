@@ -88,9 +88,9 @@ async function main() {
   const groupProblem = new Map<string, number>();
   const matcher: Matcher = dryRun
     ? fakeMatcher(groupProblem)
-    : (draft, list) => {
+    : (draft, list, examples) => {
         spendAiCall(`matching "${draft.title}"`);
-        return llmMatcher(draft, list);
+        return llmMatcher(draft, list, examples);
       };
   const intake = createIntake({ db, matcher });
 

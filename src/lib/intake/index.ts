@@ -7,6 +7,7 @@ import {
   supports,
   type SubmitterChoice,
 } from "@/db/schema";
+import { listMatchingExamples, type MatchingDecisionItem } from "@/lib/match-review";
 
 /** A Request as typed by the submitter, before it is saved. */
 export type RequestDraft = { title: string; description: string };
@@ -26,10 +27,19 @@ export type MatcherResult = {
   newProblem: NewProblemStatement;
 };
 
-/** Given a Request and summaries of every Problem, propose a match or a new Problem. */
+/** A reviewed Matching decision (with its Match review) that the Matcher learns from. */
+export type MatchingExample = MatchingDecisionItem & {
+  review: NonNullable<MatchingDecisionItem["review"]>;
+};
+
+/**
+ * Given a Request, summaries of every Problem, and Matching examples (corrections first, then
+ * most recently reviewed, at most 20), propose a match or a new Problem.
+ */
 export type Matcher = (
   request: RequestDraft,
   problems: ProblemSummary[],
+  examples: MatchingExample[],
 ) => Promise<MatcherResult>;
 
 export type Proposal = {
@@ -79,7 +89,8 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
       .from(problems)
       .orderBy(asc(problems.id))
       .all();
-    const result = await matcher(request, list);
+    const examples = listMatchingExamples(db) as MatchingExample[];
+    const result = await matcher(request, list, examples);
     const matched = result.match && list.find((p) => p.id === result.match!.problemId);
     return {
       match:

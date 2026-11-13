@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { createDb } from "@/db";
-import { matchingDecisions, people, problems } from "@/db/schema";
+import { createDb, type Db } from "@/db";
+import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
-import { createMatchReview } from "@/lib/match-review";
+import { createMatchReview, type BoundaryNoteWriter } from "@/lib/match-review";
+
+/** Fake AI dependency: returns the current note unchanged. */
+const fakeWriter: BoundaryNoteWriter = async ({ currentNote }) => currentNote ?? "";
 
 const NEW_PROBLEM = { title: "Log cupping sessions", need: "I need to record how a coffee tasted." };
 
@@ -41,7 +44,7 @@ function setup() {
     return intake.confirm(draft, proposal, decision, alex.id);
   }
 
-  return { db, alex, sam, flavour, submit, review: createMatchReview({ db }) };
+  return { db, alex, sam, flavour, submit, review: createMatchReview({ db, boundaryNoteWriter: fakeWriter }) };
 }
 
 describe("Match review queue", () => {
@@ -119,8 +122,237 @@ describe("Match review queue", () => {
     const proposal = await intake.propose(draft);
     intake.confirm(draft, proposal, { createProblem: proposal.newProblem }, alex.id);
 
-    expect(createMatchReview({ db }).listQueue()).toMatchObject([
+    expect(createMatchReview({ db, boundaryNoteWriter: fakeWriter }).listQueue()).toMatchObject([
       { proposal: { match: null, newProblem: NEW_PROBLEM }, submitterChoice: "no_match" },
     ]);
+  });
+});
+
+/** Proposes no match; each test's `place` decides where the Request goes. */
+const noMatch: Matcher = async () => ({ match: null, newProblem: NEW_PROBLEM });
+
+function setupReview() {
+  const db = createDb(":memory:");
+  const [alex, priya, sam] = db
+    .insert(people)
+    .values([
+      { name: "Alex", role: "customer" },
+      { name: "Priya", role: "customer" },
+      { name: "Sam", role: "pm" },
+    ])
+    .returning()
+    .all();
+  const [flavour, grind] = db
+    .insert(problems)
+    .values([
+      { title: "Compare roast flavour", need: "I need to compare how roasts taste." },
+      { title: "Dial in grind size", need: "I need to remember grind settings." },
+    ])
+    .returning()
+    .all();
+  const intake = createIntake({ db, matcher: noMatch });
+  const review = createMatchReview({ db, boundaryNoteWriter: fakeWriter });
+
+  /** Submit a Request through Intake onto `problemId`; returns its Matching decision. */
+  async function place(personId: number, problemId: number, title = "Cupping log") {
+    const draft = { title, description: `${title}, please.` };
+    const proposal = await intake.propose(draft);
+    const { requestId } = intake.confirm(draft, proposal, { attachTo: problemId }, personId);
+    return db.select().from(matchingDecisions).where(eq(matchingDecisions.requestId, requestId)).get()!;
+  }
+
+  return { db, alex, priya, sam, flavour, grind, review, place };
+}
+
+const requestsOf = (db: Db) => db.select().from(requests).all();
+const supportsOf = (db: Db) =>
+  db.select({ personId: supports.personId, problemId: supports.problemId }).from(supports).all();
+const problemOf = (db: Db, requestId: number) =>
+  db.select().from(requests).where(eq(requests.id, requestId)).get()!.problemId;
+
+describe("Match review: Confirm", () => {
+  it("records the verdict, note, and reviewer and moves nothing", async () => {
+    const { db, alex, sam, flavour, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    const before = { requests: requestsOf(db), supports: supportsOf(db) };
+
+    const affected = review.review(decision.id, "confirm", { note: "Right call." }, sam.id);
+
+    expect(affected).toEqual([flavour.id]);
+    expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
+    const [item] = review.listReviewed();
+    expect(item.review).toMatchObject({
+      verdict: "confirm",
+      note: "Right call.",
+      reviewer: { id: sam.id, name: "Sam" },
+      fromProblem: null,
+      toProblem: null,
+    });
+    expect(item.review!.reviewedAt).toBeInstanceOf(Date);
+  });
+
+  it("stores a blank note as no note", async () => {
+    const { alex, sam, flavour, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+
+    review.review(decision.id, "confirm", { note: "   " }, sam.id);
+
+    expect(review.listReviewed()[0].review!.note).toBeNull();
+  });
+});
+
+describe("Match review: Move", () => {
+  it("relocates the Request and the submitter's Support to the target Problem", async () => {
+    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, grind.id);
+    await place(priya.id, grind.id, "Grind notes"); // keeps the source alive
+
+    const affected = review.review(
+      decision.id,
+      "move",
+      { targetProblemId: flavour.id, note: "Cupping is about flavour." },
+      sam.id,
+    );
+
+    expect(affected).toEqual([grind.id, flavour.id]);
+    expect(problemOf(db, decision.requestId)).toBe(flavour.id);
+    expect(supportsOf(db)).toEqual(
+      expect.arrayContaining([
+        { personId: alex.id, problemId: flavour.id },
+        { personId: priya.id, problemId: grind.id },
+      ]),
+    );
+    expect(supportsOf(db)).not.toContainEqual({ personId: alex.id, problemId: grind.id });
+    expect(review.listReviewed()[0].review).toMatchObject({
+      verdict: "move",
+      note: "Cupping is about flavour.",
+      fromProblem: { id: grind.id, title: grind.title },
+      toProblem: { id: flavour.id, title: flavour.title },
+    });
+  });
+
+  it("keeps the submitter's Support on the source when they have another Request there", async () => {
+    const { db, alex, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, grind.id);
+    await place(alex.id, grind.id, "Grind notes");
+
+    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+
+    expect(supportsOf(db)).toEqual(
+      expect.arrayContaining([
+        { personId: alex.id, problemId: grind.id },
+        { personId: alex.id, problemId: flavour.id },
+      ]),
+    );
+  });
+
+  it("does not duplicate a Support the submitter already gives the target", async () => {
+    const { db, alex, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, grind.id);
+    await place(alex.id, flavour.id, "Flavour notes");
+
+    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+
+    expect(supportsOf(db)).toEqual([{ personId: alex.id, problemId: flavour.id }]);
+  });
+});
+
+describe("Match review: Split", () => {
+  it("creates a Problem from the given title and need and relocates the Request and Support", async () => {
+    const { db, alex, priya, sam, flavour, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    await place(priya.id, flavour.id, "Flavour wheel");
+    const newProblem = { title: "Score cupping sessions", need: "I need to score cuppings." };
+
+    const affected = review.review(decision.id, "split", { newProblem }, sam.id);
+
+    const created = db.select().from(problems).where(eq(problems.title, newProblem.title)).get();
+    expect(created).toMatchObject({ ...newProblem, status: "open" });
+    expect(affected).toEqual([flavour.id, created!.id]);
+    expect(problemOf(db, decision.requestId)).toBe(created!.id);
+    expect(supportsOf(db)).toEqual(
+      expect.arrayContaining([
+        { personId: alex.id, problemId: created!.id },
+        { personId: priya.id, problemId: flavour.id },
+      ]),
+    );
+    expect(supportsOf(db)).not.toContainEqual({ personId: alex.id, problemId: flavour.id });
+    expect(review.listReviewed()[0].review).toMatchObject({
+      verdict: "split",
+      fromProblem: { id: flavour.id },
+      toProblem: { id: created!.id, title: newProblem.title },
+    });
+  });
+
+  it("refuses a Split without a new Problem", async () => {
+    const { alex, sam, flavour, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+
+    expect(() => review.review(decision.id, "split", {}, sam.id)).toThrow();
+    expect(review.countQueue()).toBe(1);
+  });
+});
+
+describe("Match review: a source left without Evidence", () => {
+  it("is deleted with its Supports, nulls proposals pointing to it, and is not returned", async () => {
+    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, grind.id);
+    // Priya supports the source without Evidence of her own.
+    db.insert(supports).values({ personId: priya.id, problemId: grind.id }).run();
+    // Another decision whose Matcher proposal pointed at the source.
+    const other = await place(priya.id, flavour.id, "Taste notes");
+    db.update(matchingDecisions)
+      .set({ proposedProblemId: grind.id, confidence: 0.6, reason: "Looked similar." })
+      .where(eq(matchingDecisions.id, other.id))
+      .run();
+
+    const affected = review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+
+    expect(affected).toEqual([flavour.id]);
+    expect(db.select().from(problems).where(eq(problems.id, grind.id)).get()).toBeUndefined();
+    expect(supportsOf(db).filter((s) => s.problemId === grind.id)).toEqual([]);
+    expect(problemOf(db, decision.requestId)).toBe(flavour.id);
+    const otherItem = review.listQueue().find((i) => i.id === other.id)!;
+    expect(otherItem.proposal.match).toMatchObject({ problemId: null, problemTitle: null });
+    expect(review.listReviewed()[0].review).toMatchObject({
+      verdict: "move",
+      fromProblem: null,
+      toProblem: { id: flavour.id },
+    });
+  });
+});
+
+describe("Match review: refusals", () => {
+  it("refuses to review a decision twice", async () => {
+    const { alex, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    review.review(decision.id, "confirm", {}, sam.id);
+
+    expect(() =>
+      review.review(decision.id, "move", { targetProblemId: grind.id }, sam.id),
+    ).toThrow(/already been reviewed/);
+    expect(review.listReviewed()[0].review!.verdict).toBe("confirm");
+  });
+
+  it("refuses to move a Request onto the Problem it is already on", async () => {
+    const { db, alex, sam, flavour, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    const before = requestsOf(db);
+
+    expect(() =>
+      review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id),
+    ).toThrow(/already on/);
+    expect(requestsOf(db)).toEqual(before);
+    expect(review.countQueue()).toBe(1);
+  });
+
+  it("refuses to move to a Problem that does not exist, changing nothing", async () => {
+    const { db, alex, sam, flavour, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    const before = { requests: requestsOf(db), supports: supportsOf(db) };
+
+    expect(() => review.review(decision.id, "move", { targetProblemId: 999 }, sam.id)).toThrow();
+    expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
+    expect(review.countQueue()).toBe(1);
   });
 });

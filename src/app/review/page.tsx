@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { asc } from "drizzle-orm";
 import { getDb } from "@/db/client";
+import { problems } from "@/db/schema";
 import { getCurrentPerson } from "@/lib/identity";
 import { isPm } from "@/lib/roles";
+import { getMatchReview } from "@/lib/match-review-app";
 import {
-  createMatchReview,
   SUBMITTER_CHOICE_LABELS,
   VERDICT_LABELS,
   type MatchingDecisionItem,
 } from "@/lib/match-review";
 import { cn } from "@/lib/utils";
+import { MatchReviewControls } from "@/components/match-review-controls";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
@@ -26,9 +29,16 @@ export default async function ReviewPage({
   const person = await getCurrentPerson();
   if (!isPm(person)) notFound();
   const reviewedTab = (await searchParams).tab === "reviewed";
-  const review = createMatchReview({ db: getDb() });
+  const review = getMatchReview();
   const queueCount = review.countQueue();
   const items = reviewedTab ? review.listReviewed() : review.listQueue();
+  const problemOptions = reviewedTab
+    ? []
+    : getDb()
+        .select({ id: problems.id, title: problems.title })
+        .from(problems)
+        .orderBy(asc(problems.title))
+        .all();
 
   return (
     <div className="space-y-6">
@@ -50,7 +60,7 @@ export default async function ReviewPage({
         <ul className="space-y-4">
           {items.map((item) => (
             <li key={item.id}>
-              <DecisionCard item={item} />
+              <DecisionCard item={item} problems={problemOptions} />
             </li>
           ))}
         </ul>
@@ -90,7 +100,13 @@ function ProblemLink({ problem }: { problem: { id: number; title: string } | nul
   );
 }
 
-function DecisionCard({ item }: { item: MatchingDecisionItem }) {
+function DecisionCard({
+  item,
+  problems,
+}: {
+  item: MatchingDecisionItem;
+  problems: { id: number; title: string }[];
+}) {
   const { request, submitter, proposal, review } = item;
   const { match } = proposal;
   return (
@@ -163,6 +179,15 @@ function DecisionCard({ item }: { item: MatchingDecisionItem }) {
             </>
           )}
         </dl>
+
+        {!review && (
+          <MatchReviewControls
+            decisionId={item.id}
+            currentProblemId={item.currentProblem.id}
+            problems={problems}
+            newProblem={proposal.newProblem}
+          />
+        )}
       </CardContent>
     </Card>
   );

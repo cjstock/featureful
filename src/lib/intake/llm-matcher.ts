@@ -1,7 +1,8 @@
 import { generateText, Output } from "ai";
 import { z } from "zod";
 import { model } from "@/lib/ai";
-import type { Matcher } from "./index";
+import { SUBMITTER_CHOICE_LABELS } from "@/lib/match-review";
+import type { Matcher, MatchingExample } from "./index";
 
 const SYSTEM = `You triage feature Requests for a coffee-tracking app used by home roasters (beans, roasts, brews, recipes).
 
@@ -15,7 +16,9 @@ Your job, for one new Request:
    - title: a short noun phrase naming the need (max ~8 words), not a feature name.
    - need: one or two sentences in the first person ("I need to ..."), describing the need and why it matters, without prescribing a solution.
 
-If you match, give your confidence (0 to 1) and a one-line reason a submitter can judge, naming the shared need.`;
+If you match, give your confidence (0 to 1) and a one-line reason a submitter can judge, naming the shared need.
+
+You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.`;
 
 const schema = z.object({
   matchedProblemId: z
@@ -31,17 +34,52 @@ const schema = z.object({
   }),
 });
 
+const MAX_DESCRIPTION = 300;
+
+const quote = (title: string | null | undefined) => (title ? `"${title}"` : "a since-deleted Problem");
+
+/** One Matching example as prompt text. */
+function formatExample(example: MatchingExample, index: number): string {
+  const { request, proposal, review } = example;
+  const description =
+    request.description.length > MAX_DESCRIPTION
+      ? `${request.description.slice(0, MAX_DESCRIPTION)}…`
+      : request.description;
+  const proposed = proposal.match
+    ? `match with ${quote(proposal.match.problemTitle)} (confidence ${proposal.match.confidence.toFixed(2)}): ${proposal.match.reason}`
+    : `a new Problem "${proposal.newProblem.title}"`;
+  const verdict =
+    review.verdict === "confirm"
+      ? `Confirmed: the Request belongs on ${quote(example.currentProblem.title)}`
+      : review.verdict === "move"
+        ? `Moved from ${quote(review.fromProblem?.title)} to ${quote(review.toProblem?.title)}`
+        : `Split from ${quote(review.fromProblem?.title)} into its own new Problem ${quote(review.toProblem?.title)}`;
+  return [
+    `Example ${index + 1}:`,
+    `Request: ${request.title} — ${description}`,
+    `Matcher proposed: ${proposed}`,
+    `Submitter: ${SUBMITTER_CHOICE_LABELS[example.submitterChoice]}`,
+    `PM verdict: ${verdict}`,
+    ...(review.note ? [`PM note: ${review.note}`] : []),
+  ].join("\n");
+}
+
 /** Production Matcher: one structured-output LLM call over the full Problem list (ADR 0001). */
-export const llmMatcher: Matcher = async (request, problems) => {
+export const llmMatcher: Matcher = async (request, problems, examples) => {
   const list =
     problems.length === 0
       ? "(none yet)"
       : problems.map((p) => `- id ${p.id}: ${p.title} — ${p.need}`).join("\n");
 
+  const examplesSection =
+    examples.length === 0
+      ? ""
+      : `Matching examples (corrections first, then most recent):\n\n${examples.map(formatExample).join("\n\n")}\n\n`;
+
   const { output } = await generateText({
     model,
     system: SYSTEM,
-    prompt: `Existing Problems:\n${list}\n\nNew Request:\nTitle: ${request.title}\nDescription: ${request.description}`,
+    prompt: `${examplesSection}Existing Problems:\n${list}\n\nNew Request:\nTitle: ${request.title}\nDescription: ${request.description}`,
     output: Output.object({ schema }),
   });
 
