@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
+import Script from "next/script";
 import { cn } from "@/lib/utils";
 import { parseTheme, THEME_COOKIE, THEME_SCRIPT } from "@/lib/theme";
 import { SiteHeader } from "@/components/site-header";
@@ -19,7 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // THEME_SCRIPT may add `dark` before hydration when the theme is "system".
     <html lang="en" className={cn("h-full antialiased", theme === "dark" && "dark")} suppressHydrationWarning>
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <Script id="theme-init" strategy="beforeInteractive">{THEME_SCRIPT}</Script>
       </head>
       <body className="flex min-h-full flex-col">
         <SiteHeader />

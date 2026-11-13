@@ -89,3 +89,7 @@
   Response: Presented the existing single-ticket breakdown for approval.
 [2026-11-12T21:21:50-08:00] Prompt: Approved asked-about ticket; go.
   Response: Committed asked-about spec/ticket + glossary term to mvp; ticket queued behind colour ticket 02.
+[2026-11-12T21:23:42-08:00] (orchestration) Colour ticket 01 done (xvxmkkvu); mvp advanced; main workspace moved onto mvp for the user to view; launched colour ticket 02.
+[2026-11-12T21:24:06-08:00] (monitor) Browser warning "Encountered a script tag while rendering React component" from colour ticket 01's inline theme script in the root layout. Switched it to next/script strategy="beforeInteractive"; awaiting user reload to confirm.
+[2026-11-12T21:24:38-08:00] Prompt: Reloaded, warning is gone.
+  Response: Committed the next/script theme-init fix onto mvp.
