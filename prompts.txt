@@ -97,3 +97,5 @@
 [2026-11-12T21:27:54-08:00] Prompt: How much time has passed?
   Response: Computed elapsed time since first prompt (18:35).
 [2026-11-12T21:29:04-08:00] (orchestration) Asked-about ticket done (usxrypmx); mvp advanced; main workspace moved onto mvp; all agent workspaces removed.
+[2026-11-12T21:30:12-08:00] Prompt: Restarted dev server; colours are showing now.
+  Response: Root cause: dev server kept serving a stale compiled globals.css after jj rewrote the file (JS changes reloaded, CSS did not; touch didn't help). Restart fixed it; verified served CSS now contains tone classes.
