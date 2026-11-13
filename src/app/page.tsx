@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { getDb } from "@/db/client";
-import type { Person } from "@/db/schema";
 import { getCurrentPerson } from "@/lib/identity";
-import { isInternalStakeholder } from "@/lib/roles";
+import { isInternalStakeholder, isPm } from "@/lib/roles";
+import { ReevaluateButton } from "@/components/reevaluate-button";
 import { listProblems, parseProblemQuery, type ProblemListItem } from "@/lib/problems";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -27,13 +27,16 @@ export default async function HomePage({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-heading text-2xl font-semibold">Problems</h1>
-        <p className="text-muted-foreground">
-          {internal
-            ? "Every Problem with its Priority score, Demand and Evidence."
-            : "What people have asked for. Support the Problems that matter to you."}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-2xl font-semibold">Problems</h1>
+          <p className="text-muted-foreground">
+            {internal
+              ? "Every Problem with its Priority score, Demand and Evidence."
+              : "What people have asked for. Support the Problems that matter to you."}
+          </p>
+        </div>
+        {isPm(person) && items.length > 0 && <ReevaluateButton />}
       </div>
 
       {!internal && <CustomerTabs onlySupported={onlySupported} />}
@@ -50,7 +53,7 @@ export default async function HomePage({
       ) : internal ? (
         <InternalList items={items} />
       ) : (
-        <CustomerList items={items} person={person} />
+        <CustomerList items={items} />
       )}
     </div>
   );
@@ -94,7 +97,7 @@ function EmptyState({ filtered, onlySupported }: { filtered: boolean; onlySuppor
   );
 }
 
-function CustomerList({ items, person }: { items: ProblemListItem[]; person: Person }) {
+function CustomerList({ items }: { items: ProblemListItem[] }) {
   return (
     <ul className="space-y-3">
       {items.map(({ problem, supporterCount, supportedByViewer }) => (
@@ -116,9 +119,7 @@ function CustomerList({ items, person }: { items: ProblemListItem[]; person: Per
               )}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-sm text-muted-foreground">{supporterLabel(supporterCount)}</span>
-                {person.role === "customer" && (
-                  <SupportButton problemId={problem.id} supported={supportedByViewer} />
-                )}
+                <SupportButton problemId={problem.id} supported={supportedByViewer} />
               </div>
             </div>
           </Card>
@@ -139,10 +140,13 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
             <th className="px-3 py-2 font-medium">Status</th>
             <th className="px-3 py-2 text-right font-medium">Supporters</th>
             <th className="px-3 py-2 text-right font-medium">Evidence</th>
+            <th className="px-3 py-2 font-medium">
+              <span className="sr-only">Your Support</span>
+            </th>
           </tr>
         </thead>
         <tbody>
-          {items.map(({ problem, supporterCount, evidenceCount, priority }) => (
+          {items.map(({ problem, supporterCount, evidenceCount, priority, supportedByViewer }) => (
             <tr key={problem.id} className="border-t align-top">
               <td className="px-3 py-2">
                 <div className="text-lg font-semibold tabular-nums">{priority.total}</div>
@@ -168,6 +172,9 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
               </td>
               <td className="px-3 py-2 text-right tabular-nums">{supporterCount}</td>
               <td className="px-3 py-2 text-right tabular-nums">{evidenceCount}</td>
+              <td className="px-3 py-2 text-right">
+                <SupportButton problemId={problem.id} supported={supportedByViewer} compact />
+              </td>
             </tr>
           ))}
         </tbody>

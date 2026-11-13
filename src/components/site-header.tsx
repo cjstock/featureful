@@ -3,7 +3,7 @@ import { asc } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { people } from "@/db/schema";
 import { getCurrentPerson } from "@/lib/identity";
-import { ROLE_LABELS } from "@/lib/roles";
+import { isInternalStakeholder, ROLE_LABELS } from "@/lib/roles";
 import { IdentitySwitcher } from "@/components/identity-switcher";
 
 export async function SiteHeader() {
@@ -17,6 +17,11 @@ export async function SiteHeader() {
           Featureful
         </Link>
         <nav className="flex items-center gap-4">
+          {isInternalStakeholder(current) && (
+            <Link href="/strategy" className="text-sm font-medium hover:underline">
+              Product Strategy
+            </Link>
+          )}
           <Link href="/submit" className="text-sm font-medium hover:underline">
             Submit a Request
           </Link>

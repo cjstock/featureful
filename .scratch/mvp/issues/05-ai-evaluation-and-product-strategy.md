@@ -4,12 +4,12 @@
 
 **Blocked by:** 02, 03, 04
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The Evaluator is one structured-output LLM call taking the Problem, its Evidence, and the Product Strategy
-- [ ] Risk means delivery risk (not the risk of inaction), per the glossary
-- [ ] Evaluation runs after the response is sent when a Problem is created or gets new Evidence via Intake
-- [ ] The Problem page shows a breakdown for each criterion (score, reason, weighted contribution) plus the total and evaluated_at to Internal stakeholders only
-- [ ] A PM-only Product Strategy page edits the single strategy text
-- [ ] PM-only "Re-evaluate" (one Problem) and "Re-evaluate all" actions exist; Support agents can't trigger them
-- [ ] An unevaluated or failed evaluation shows a clear "not evaluated" state rather than crashing
+- [x] The Evaluator is one structured-output LLM call taking the Problem, its Evidence, and the Product Strategy
+- [x] Risk means delivery risk (not the risk of inaction), per the glossary
+- [x] Evaluation runs after the response is sent when a Problem is created or gets new Evidence via Intake
+- [x] The Problem page shows a breakdown for each criterion (score, reason, weighted contribution) plus the total and evaluated_at to Internal stakeholders only
+- [x] A PM-only Product Strategy page edits the single strategy text
+- [x] PM-only "Re-evaluate" (one Problem) and "Re-evaluate all" actions exist; Support agents can't trigger them
+- [x] An unevaluated or failed evaluation shows a clear "not evaluated" state rather than crashing

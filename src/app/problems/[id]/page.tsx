@@ -2,10 +2,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
-import { isInternalStakeholder, ROLE_LABELS } from "@/lib/roles";
+import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { getProblem, listEvidence } from "@/lib/problems";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ReevaluateButton } from "@/components/reevaluate-button";
+import { ScoreBreakdown } from "@/components/score-breakdown";
 import { StatusBadge } from "@/components/status-badge";
 import { SupportButton } from "@/components/support-button";
 import { supporterLabel } from "@/components/supporter-count";
@@ -39,9 +48,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
         </div>
         <h1 className="font-heading text-2xl font-semibold">{problem.title}</h1>
         <p className="text-muted-foreground">{problem.need}</p>
-        {person.role === "customer" && (
-          <SupportButton problemId={problem.id} supported={supportedByMe} size="default" />
-        )}
+        <SupportButton problemId={problem.id} supported={supportedByMe} size="default" />
       </header>
 
       <Card>
@@ -57,17 +64,18 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
         <Card>
           <CardHeader>
             <CardTitle>Priority score</CardTitle>
-            <CardDescription>Demand is computed live from the supporter count.</CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-wrap items-baseline gap-3">
-            <span className="text-3xl font-semibold tabular-nums">{priority.total}</span>
-            {priority.overridden && (
-              <span className="text-sm text-muted-foreground">
-                Overridden (computed {priority.computedTotal})
-                {problem.overrideNote ? `: ${problem.overrideNote}` : ""}
-              </span>
+            <CardDescription>
+              The AI scores Impact, Strategic fit, Effort and delivery Risk; Demand is computed live
+              from the supporter count.
+            </CardDescription>
+            {isPm(person) && (
+              <CardAction>
+                <ReevaluateButton problemId={problem.id} />
+              </CardAction>
             )}
-            {!priority.evaluated && <Badge variant="outline">Not evaluated</Badge>}
+          </CardHeader>
+          <CardContent>
+            <ScoreBreakdown problem={problem} priority={priority} supporterCount={supporters.length} />
           </CardContent>
         </Card>
       )}

@@ -1,11 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
 import { createIntake, type Confirmation, type Proposal } from "@/lib/intake";
 import { llmMatcher } from "@/lib/intake/llm-matcher";
+import { tryEvaluateProblem } from "@/lib/evaluator";
 
 const draftSchema = z.object({
   title: z.string().trim().min(1, "Give your Request a title").max(200),
@@ -26,12 +28,10 @@ export type RequestDraftInput = z.input<typeof draftSchema>;
 export type DecisionInput = z.input<typeof decisionSchema>;
 type Result<T> = { ok: true } & T | { ok: false; error: string };
 
-/**
- * Hook point for evaluating a Problem once it is created or gets new Evidence.
- * Ticket 05 wires the Evaluator here, e.g. `after(() => evaluate(problemId))`.
- */
-function onEvidenceAdded(confirmation: Confirmation) {
-  void confirmation;
+/** Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent. */
+function onEvidenceAdded({ problemId }: Confirmation) {
+  // Pages are dynamic and read the db per request, so the next visit shows the new scores.
+  after(() => tryEvaluateProblem(getDb(), problemId));
 }
 
 function intake() {
