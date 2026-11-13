@@ -16,13 +16,20 @@ export async function SiteHeader() {
         <Link href="/" className="font-heading text-lg font-semibold">
           Featureful
         </Link>
-        <IdentitySwitcher
-          currentId={current.id}
-          options={everyone.map((p) => ({
-            id: p.id,
-            label: `${p.name} (${ROLE_LABELS[p.role]})`,
-          }))}
-        />
+        <nav className="flex items-center gap-4">
+          {current.role !== "pm" && (
+            <Link href="/submit" className="text-sm font-medium hover:underline">
+              Submit a Request
+            </Link>
+          )}
+          <IdentitySwitcher
+            currentId={current.id}
+            options={everyone.map((p) => ({
+              id: p.id,
+              label: `${p.name} (${ROLE_LABELS[p.role]})`,
+            }))}
+          />
+        </nav>
       </div>
     </header>
   );

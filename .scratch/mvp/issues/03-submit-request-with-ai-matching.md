@@ -4,13 +4,13 @@
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The Intake module exposes `propose` (writes nothing) and `confirm` (writes the Request, creates the Problem if needed, adds Support idempotently)
-- [ ] Intake depends on a Matcher interface; the production Matcher is one structured-output LLM call with the full Problem list (per ADR 0001), told to match only when the underlying need is the same
-- [ ] Rejecting a match creates a new Problem, using an AI-proposed title and need statement
-- [ ] A submitter who already supports the matched Problem gets the Request added as Evidence without a duplicate Support
-- [ ] The submit UI shows a loading state during the AI call, and an error with retry that keeps the typed input
-- [ ] After confirming, the user lands on the Problem page
-- [ ] Vitest tests run against an in-memory SQLite db with a fake Matcher and cover: match accepted, match rejected, no match, Support not duplicated, `propose` writes nothing
-- [ ] A hook point exists to trigger evaluation after confirm (wired up in 05)
+- [x] The Intake module exposes `propose` (writes nothing) and `confirm` (writes the Request, creates the Problem if needed, adds Support idempotently)
+- [x] Intake depends on a Matcher interface; the production Matcher is one structured-output LLM call with the full Problem list (per ADR 0001), told to match only when the underlying need is the same
+- [x] Rejecting a match creates a new Problem, using an AI-proposed title and need statement
+- [x] A submitter who already supports the matched Problem gets the Request added as Evidence without a duplicate Support
+- [x] The submit UI shows a loading state during the AI call, and an error with retry that keeps the typed input
+- [x] After confirming, the user lands on the Problem page
+- [x] Vitest tests run against an in-memory SQLite db with a fake Matcher and cover: match accepted, match rejected, no match, Support not duplicated, `propose` writes nothing
+- [x] A hook point exists to trigger evaluation after confirm (wired up in 05)
