@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, type SQL } from "drizzle-orm";
 import type { Db } from "@/db";
 import { aiCalls, type AiCall, type AiModule, type Person } from "@/db/schema";
 import { isPm } from "@/lib/roles";
@@ -38,21 +38,29 @@ export function formatAiCallLine({ module, promptVersion, costUsd, latencyMs, ou
   ].join(" · ");
 }
 
+/**
+ * Evaluator AI calls about Problem `problemId` (about any Problem when omitted). Shared with
+ * src/lib/evaluation-freshness.ts so "the latest Evaluator AI call" means one thing everywhere.
+ */
+export function evaluatorCallsAbout(problemId?: number): SQL | undefined {
+  return and(
+    eq(aiCalls.module, "evaluator"),
+    eq(aiCalls.relatedType, "problem"),
+    problemId === undefined ? undefined : eq(aiCalls.relatedId, problemId),
+  );
+}
+
+/** Newest AI call first; ties on time go to the later AI call. */
+export const newestAiCallFirst: SQL[] = [desc(aiCalls.time), desc(aiCalls.id)];
+
 /** The newest successful Evaluator AI call for a Problem: the one behind its current scores. */
 export function latestEvaluationCall(db: Db, problemId: number): AiCallLine | null {
   return (
     db
       .select(summaryColumns)
       .from(aiCalls)
-      .where(
-        and(
-          eq(aiCalls.module, "evaluator"),
-          eq(aiCalls.outcome, "ok"),
-          eq(aiCalls.relatedType, "problem"),
-          eq(aiCalls.relatedId, problemId),
-        ),
-      )
-      .orderBy(desc(aiCalls.time), desc(aiCalls.id))
+      .where(and(evaluatorCallsAbout(problemId), eq(aiCalls.outcome, "ok")))
+      .orderBy(...newestAiCallFirst)
       .get() ?? null
   );
 }

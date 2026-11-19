@@ -5,6 +5,8 @@ import { getCurrentPerson } from "@/lib/identity";
 import { isInternalStakeholder, isPm } from "@/lib/roles";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 import { listProblems, parseProblemQuery, type ProblemListItem } from "@/lib/problems";
+import { listEvaluationFreshness, type EvaluationFreshness } from "@/lib/evaluation-freshness";
+import { FreshnessMarker } from "@/components/evaluation-freshness";
 import { cn } from "@/lib/utils";
 import { NotEvaluatedBadge, OverrideBadge, ScoreChip } from "@/components/score-chip";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,7 +25,8 @@ export default async function HomePage({
   const internal = isInternalStakeholder(person);
   const onlySupported = !internal && query.onlySupported;
   const sort = query.sort ?? "priority";
-  const items = listProblems(getDb(), {
+  const db = getDb();
+  const items = listProblems(db, {
     ...query,
     sort,
     onlySupported,
@@ -58,7 +61,7 @@ export default async function HomePage({
       {items.length === 0 ? (
         <EmptyState filtered={filtered} onlySupported={onlySupported} />
       ) : internal ? (
-        <InternalList items={items} />
+        <InternalList items={items} freshness={listEvaluationFreshness(db)} />
       ) : (
         <CustomerList items={items} />
       )}
@@ -151,7 +154,13 @@ function AskedMarker({ count }: { count: number }) {
   );
 }
 
-function InternalList({ items }: { items: ProblemListItem[] }) {
+function InternalList({
+  items,
+  freshness,
+}: {
+  items: ProblemListItem[];
+  freshness: Map<number, EvaluationFreshness>;
+}) {
   return (
     <div className="overflow-x-auto rounded-xl ring-1 ring-foreground/10">
       <table className="w-full text-sm">
@@ -185,6 +194,7 @@ function InternalList({ items }: { items: ProblemListItem[] }) {
                     <NotEvaluatedBadge />
                   </div>
                 )}
+                <FreshnessMarker freshness={freshness.get(problem.id)} />
               </td>
               <td className="px-3 py-2">
                 <Link href={`/problems/${problem.id}`} className="font-medium hover:underline">

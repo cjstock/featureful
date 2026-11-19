@@ -7,6 +7,8 @@ import { getProblem, listEvidence } from "@/lib/problems";
 import { STATUS_LABELS } from "@/lib/statuses";
 import { getBrief } from "@/lib/brief-writer";
 import { latestEvaluationCall } from "@/lib/ai-calls";
+import { evaluationFreshness } from "@/lib/evaluation-freshness";
+import { FreshnessNotice } from "@/components/evaluation-freshness";
 import { AiCallLine } from "@/components/ai-call-line";
 import { Badge } from "@/components/ui/badge";
 import { roleTone } from "@/lib/tones";
@@ -44,6 +46,8 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
   const supportedByMe = supporters.some((s) => s.id === person.id);
   // PMs see which AI call produced the current evaluation.
   const evaluationCall = isPm(person) ? latestEvaluationCall(db, id) : null;
+  // Internal stakeholders see when the scores are stale or the latest evaluation failed.
+  const freshness = internal ? evaluationFreshness(db, id) : null;
 
   return (
     <div className="space-y-6">
@@ -114,6 +118,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
             )}
           </CardHeader>
           <CardContent>
+            {freshness && <FreshnessNotice freshness={freshness} canReevaluate={isPm(person)} className="mb-4" />}
             <ScoreBreakdown
               problem={problem}
               priority={priority}
