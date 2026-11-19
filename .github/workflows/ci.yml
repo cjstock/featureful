@@ -49,6 +49,8 @@ jobs:
               - 'src/lib/intake/**'
               - 'src/lib/evaluator.ts'
               - 'src/lib/match-review.ts'
+              - 'src/lib/customer-text.ts'
+              - 'src/lib/evidence-prompt.ts'
               - 'evals/**'
               - 'scripts/eval.ts'
               - 'package-lock.json'

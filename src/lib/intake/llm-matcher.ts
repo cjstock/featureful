@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Db } from "@/db";
 import { aiGenerate, type AiCaller } from "@/lib/ai";
 import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
+import { customerTextRule, tagCustomerText } from "@/lib/customer-text";
 import { SUBMITTER_CHOICE_LABELS } from "@/lib/match-review";
 import type { Matcher, MatchingExample, RequestDraft } from "./index";
 
@@ -21,7 +22,9 @@ If you match, give your confidence (0 to 1) and a one-line reason a submitter ca
 
 You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.
 
-Some Problems have a Boundary note, written from the PM's reviews, saying what that Problem does and does not cover. Treat it as the PM's ruling: never match a Request to a Problem whose Boundary note excludes its need.`;
+Some Problems have a Boundary note, written from the PM's reviews, saying what that Problem does and does not cover. Treat it as the PM's ruling: never match a Request to a Problem whose Boundary note excludes its need.
+
+${customerTextRule("request_title", "request_description")}`;
 
 const schema = z.object({
   matchedProblemId: z
@@ -59,7 +62,7 @@ function formatExample(example: MatchingExample, index: number): string {
         : `Split from ${quote(review.fromProblem?.title)} into its own new Problem ${quote(review.toProblem?.title)}`;
   return [
     `Example ${index + 1}:`,
-    `Request: ${request.title} — ${description}`,
+    `Request: ${tagCustomerText("request_title", request.title)} — ${tagCustomerText("request_description", description)}`,
     `Matcher proposed: ${proposed}`,
     `Submitter: ${SUBMITTER_CHOICE_LABELS[example.submitterChoice]}`,
     `PM verdict: ${verdict}`,
@@ -67,9 +70,9 @@ function formatExample(example: MatchingExample, index: number): string {
   ].join("\n");
 }
 
-/** The prompt's last section: the Request being matched. */
+/** The prompt's last section: the Request being matched, its Customer text tagged. */
 const requestSection = (request: RequestDraft) =>
-  `New Request:\nTitle: ${request.title}\nDescription: ${request.description}`;
+  `New Request:\n${tagCustomerText("request_title", request.title)}\n${tagCustomerText("request_description", request.description)}`;
 
 /** Whether a Matcher prompt (as stored on its AI call) was about this Request. */
 export function isMatcherPromptFor(prompt: string, request: RequestDraft): boolean {

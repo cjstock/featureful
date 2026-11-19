@@ -1,5 +1,5 @@
 /**
- * The eval's Matcher calls must go through aiGenerate with the eval's meter, or the per-run cap
+ * The eval's Matcher and Evaluator calls must go through aiGenerate with the eval's meter, or the per-run cap
  * would be bypassed, and their AI call rows must land in the eval's own in-memory database.
  * Offline: the Matcher runs on the offline model and the API key is removed, so a call that
  * reached the real model would fail rather than spend.
@@ -11,7 +11,8 @@ import { offlineModel } from "@/lib/ai";
 import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { SEED_REQUESTS } from "../../scripts/seed-data";
 import { CASES } from "../matcher/cases";
-import { CapReachedError, createMeter, ESTIMATE_ANSWER, EVAL_CAP } from "./meter";
+import { evalEvaluator, runInjectionCheck } from "./injection";
+import { CapReachedError, createMeter, ESTIMATE_ANSWER, ESTIMATE_EVALUATION, EVAL_CAP } from "./meter";
 import { runEval } from "./run";
 
 beforeAll(() => {
@@ -57,5 +58,34 @@ describe("the eval's AI calls", () => {
     expect(meter.totals().calls).toBe(3);
     const outcomes = db.select({ outcome: aiCalls.outcome }).from(aiCalls).all().map((r) => r.outcome);
     expect(outcomes).toEqual(["ok", "ok", "ok", "refused_budget"]);
+  });
+
+  it("meters the injection check's two Evaluator calls and records them in the eval's database with source eval", async () => {
+    const db = createDb(":memory:");
+    const meter = createMeter(EVAL_CAP);
+    const worstCases: number[] = [];
+    const evaluator = evalEvaluator(db, {
+      source: "eval",
+      person: null,
+      model: offlineModel(ESTIMATE_EVALUATION),
+      meter: {
+        beforeCall(worstCase) {
+          worstCases.push(worstCase);
+          meter.beforeCall(worstCase);
+        },
+        afterCall: meter.afterCall,
+      },
+    });
+
+    expect(await runInjectionCheck(evaluator)).toMatchObject({ passed: true });
+
+    expect(meter.totals().calls).toBe(2);
+    // Each worst case includes a full 1,500-token Evaluator answer at $10/MTok.
+    expect(Math.min(...worstCases)).toBeGreaterThan(0.015);
+    const rows = db.select().from(aiCalls).all();
+    expect(rows.map((r) => [r.source, r.module, r.outcome, r.relatedType])).toEqual([
+      ["eval", "evaluator", "ok", null],
+      ["eval", "evaluator", "ok", null],
+    ]);
   });
 });
