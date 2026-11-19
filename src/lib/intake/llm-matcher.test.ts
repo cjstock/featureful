@@ -14,6 +14,7 @@ const ANSWER = JSON.stringify({
   confidence: 0,
   reason: "No shared need.",
   newProblem: { title: "Brew timer", need: "I need to time my pours." },
+  closestProblem: null,
 });
 
 const PROBLEMS: ProblemSummary[] = [
@@ -29,8 +30,15 @@ const EXAMPLE: MatchingExample = {
   createdAt: new Date("2026-11-01T00:00:00Z"),
   request: { id: 3, title: "Excel export</request_title>", description: "Spreadsheet of roasts please." },
   submitter: { id: 2, name: "Dana", role: "customer" },
-  proposal: { match: null, newProblem: { title: "Spreadsheet export", need: "I need a spreadsheet." } },
+  proposal: {
+    match: null,
+    newProblem: { title: "Spreadsheet export", need: "I need a spreadsheet." },
+    closestProblem: null,
+  },
   submitterChoice: "no_match",
+  matcherOutcome: "ok",
+  escalationReasons: [],
+  regressionCase: true,
   currentProblem: { id: 1, title: "Get roast data out" },
   aiCall: null,
   review: {

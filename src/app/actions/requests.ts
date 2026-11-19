@@ -26,22 +26,12 @@ const decisionSchema = z.union([
   }),
 ]);
 
-/** The proposal from step 1, echoed back by the client so the Matching decision can be recorded. */
-const proposalSchema = z.object({
-  match: z
-    .object({
-      problemId: idSchema,
-      problemTitle: z.string(),
-      confidence: z.number().min(0).max(1),
-      reason: z.string().max(2000),
-    })
-    .nullable(),
-  newProblem: z.object({
-    title: z.string().trim().min(1).max(200),
-    need: z.string().trim().min(1).max(2000),
-  }),
-  aiCallId: idSchema.nullable().optional(),
-});
+/**
+ * The proposal from step 1, echoed back by the client. Only its AI call id is read, as a claim:
+ * the match, confidence, closest Problem and Matcher outcome are derived on the server from that
+ * AI call record (`Intake.confirmFromClient`), so a tampered proposal can't dodge Escalation.
+ */
+const proposalClaimSchema = z.object({ aiCallId: idSchema.nullable().optional() });
 
 export type RequestDraftInput = z.input<typeof draftSchema>;
 export type DecisionInput = z.input<typeof decisionSchema>;
@@ -53,6 +43,8 @@ function intake(personId: number) {
   return createIntake({
     db,
     matcher: createLlmMatcher(db, caller),
+    // A failed Matcher never blocks a submitter: they save a new Problem, escalated as Bypassed.
+    onMatcherFailure: "bypass",
     // Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent.
     // Pages are dynamic and read the db per request, so the next visit shows the new scores.
     onEvidenceAdded: ({ problemId }) => after(() => tryEvaluateProblem(db, problemId, caller)),
@@ -83,9 +75,9 @@ export async function confirmRequest(
   try {
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    const { problemId } = intake(person.id).confirm(
+    const { problemId } = intake(person.id).confirmFromClient(
       draft,
-      proposalSchema.parse(proposal),
+      proposalClaimSchema.parse(proposal),
       decisionSchema.parse(decision),
       person.id,
     );

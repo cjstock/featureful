@@ -1,4 +1,4 @@
-import type { Role, Status, Verdict } from "@/db/schema";
+import type { EscalationReason, Role, Status, Verdict } from "@/db/schema";
 import { adjustedScore, type CriterionKey, type PriorityScore } from "./scoring";
 
 /**
@@ -76,6 +76,20 @@ const VERDICT_TONES: Record<Verdict, Tone> = {
 
 export function verdictTone(verdict: Verdict): Tone {
   return VERDICT_TONES[verdict];
+}
+
+const ESCALATION_REASON_TONES: Record<EscalationReason, Tone> = {
+  bypassed: "negative",
+  mine_is_different: "caution",
+  high_demand_merge: "info",
+  low_confidence: "caution",
+  near_miss: "caution",
+  spot_check: "neutral",
+};
+
+/** An Escalation reason chip: bypassed negative; the ambiguity reasons caution; high-Demand info; spot check neutral. */
+export function escalationReasonTone(reason: EscalationReason): Tone {
+  return ESCALATION_REASON_TONES[reason];
 }
 
 const ROLE_TONES: Record<Role, Tone> = {

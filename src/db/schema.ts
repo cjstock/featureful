@@ -28,6 +28,21 @@ export type SubmitterChoice = (typeof SUBMITTER_CHOICES)[number];
 export const VERDICTS = ["confirm", "move", "split"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
+/** How the Matcher took part in a Matching decision: it answered, failed, was switched off, or was out of budget. */
+export const MATCHER_OUTCOMES = ["ok", "failed", "off", "budget"] as const;
+export type MatcherOutcome = (typeof MATCHER_OUTCOMES)[number];
+
+/** Escalation reasons, strongest first (the Escalation queue's ranking). */
+export const ESCALATION_REASONS = [
+  "bypassed",
+  "mine_is_different",
+  "high_demand_merge",
+  "low_confidence",
+  "near_miss",
+  "spot_check",
+] as const;
+export type EscalationReason = (typeof ESCALATION_REASONS)[number];
+
 /**
  * The AI modules: each AI call record names exactly one. Includes retired modules, so AI call
  * records they made still read.
@@ -170,8 +185,8 @@ export const aiCalls = sqliteTable("ai_calls", {
 
 /**
  * Matching decision: what the Matcher proposed for a Request and what the
- * submitter chose. One per Request. Review fields are null until a PM gives a
- * Match review; a reviewed row is a Matching example.
+ * submitter chose, with its Escalation reasons. One per Request. Review fields are null until a
+ * PM gives a Match review.
  */
 export const matchingDecisions = sqliteTable("matching_decisions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -192,6 +207,19 @@ export const matchingDecisions = sqliteTable("matching_decisions", {
   submitterChoice: text("submitter_choice", { enum: SUBMITTER_CHOICES }).notNull(),
   createdAt: createdAt(),
 
+  // Escalation. `matcherOutcome` is "ok" unless the Matcher was bypassed. When it proposed a new
+  // Problem, the closest existing Problem and its confidence (null if none or not reported).
+  matcherOutcome: text("matcher_outcome", { enum: MATCHER_OUTCOMES }).notNull().default("ok"),
+  closestProblemId: integer("closest_problem_id").references(() => problems.id, {
+    onDelete: "set null",
+  }),
+  closestConfidence: real("closest_confidence"),
+  /**
+   * Escalation reasons, strongest first, computed at confirm time. Empty: Auto-accepted.
+   * Null only until the post-migration backfill has run.
+   */
+  escalationReasons: text("escalation_reasons", { mode: "json" }).$type<EscalationReason[]>(),
+
   // The Matcher's AI call (null for decisions made before AI call records, or without one).
   promptVersion: text("prompt_version"),
   aiCallId: integer("ai_call_id").references(() => aiCalls.id, { onDelete: "set null" }),
@@ -207,6 +235,8 @@ export const matchingDecisions = sqliteTable("matching_decisions", {
   toProblemId: integer("to_problem_id").references(() => problems.id, {
     onDelete: "set null",
   }),
+  /** Marked by the PM as a Regression case (`npm run eval:pull` exports it). */
+  regressionCase: integer("regression_case", { mode: "boolean" }).notNull().default(false),
 });
 
 export type Person = typeof people.$inferSelect;

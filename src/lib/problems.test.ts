@@ -199,7 +199,7 @@ describe("listProblems: Problems I've asked about", () => {
     const review = createMatchReview({ db });
     const [decision] = review.listQueue();
 
-    review.review(decision.id, "move", { targetProblemId: roasts.id }, sam.id);
+    review.review(decision.id, "move", { targetProblemId: roasts.id, note: "Different need." }, sam.id);
 
     const counts = Object.fromEntries(
       listProblems(db, { viewerId: alex.id, viewerIsCustomer: true }).map((i) => [

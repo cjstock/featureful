@@ -8,27 +8,33 @@ import { idSchema, message, type Result } from "@/lib/action-result";
 import { appCaller } from "@/lib/ai";
 import { tryEvaluateProblem } from "@/lib/evaluator";
 import { requireRole } from "@/lib/identity";
+import { DIFFERENT_NEEDS_QUESTION } from "@/lib/escalation-labels";
 import { getMatchReview } from "@/lib/match-review-app";
 
 const note = z.string().trim().max(2000).optional();
+/** Move and Split need a note, and can be marked as Regression cases. */
+const requiredNote = z.string().trim().min(1, DIFFERENT_NEEDS_QUESTION).max(2000);
+const regressionCase = z.boolean().optional();
 
 const reviewSchema = z.discriminatedUnion("verdict", [
   z.object({ verdict: z.literal("confirm"), note }),
-  z.object({ verdict: z.literal("move"), targetProblemId: idSchema, note }),
+  z.object({ verdict: z.literal("move"), targetProblemId: idSchema, note: requiredNote, regressionCase }),
   z.object({
     verdict: z.literal("split"),
     newProblem: z.object({
       title: z.string().trim().min(1, "Give the new Problem a title").max(200),
       need: z.string().trim().min(1, "Describe the new Problem's need").max(2000),
     }),
-    note,
+    note: requiredNote,
+    regressionCase,
   }),
 ]);
 
 export type MatchReviewInput = z.input<typeof reviewSchema>;
 
 /**
- * PM only: give a Match review (Confirm, Move, or Split). After a Move or Split, the affected
+ * PM only: give a Match review (Confirm, Move, or Split; Move and Split need a note and are
+ * Regression cases unless `regressionCase` is false). After a Move or Split, the affected
  * Problems are re-evaluated in the background.
  */
 export async function reviewMatch(decisionId: number, input: MatchReviewInput): Promise<Result> {

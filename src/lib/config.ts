@@ -23,3 +23,20 @@ export const AI_MAX_OUTPUT_TOKENS = {
   decision_note: 800,
   brief: 2_500,
 } as const satisfies Record<CallableAiModule, number>;
+
+/**
+ * Escalation reason thresholds (escalation ticket). A Matching decision with any reason is an
+ * Escalation; one with none is Auto-accepted.
+ */
+export const ESCALATION = {
+  /** High-Demand merge: an accepted match into a Problem with at least this many supporters, counting the submitter. */
+  highDemandSupporters: 5,
+  /** Low confidence: a match below this confidence. */
+  lowConfidenceBelow: 0.75,
+  /** Near miss: no match, and the closest Problem's confidence is at least this. */
+  nearMissAtLeast: 0.4,
+  /** Spot check: this share of the decisions with no other reason. */
+  spotCheckRate: 0.1,
+  /** Seeds the spot-check sample, so a decision's sampling is stable. Changing it re-draws the sample. */
+  spotCheckSalt: "featureful-spot-check-v1",
+} as const;

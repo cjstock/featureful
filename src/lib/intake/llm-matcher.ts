@@ -4,7 +4,7 @@ import { aiGenerate, type AiCaller } from "@/lib/ai";
 import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 import { customerTextRule, tagCustomerText } from "@/lib/customer-text";
 import { SUBMITTER_CHOICE_LABELS } from "@/lib/match-review";
-import type { Matcher, MatchingExample, RequestDraft } from "./index";
+import type { Matcher, MatcherResult, MatchingExample, RequestDraft } from "./index";
 
 const SYSTEM = `You triage feature Requests for a coffee-tracking app used by home roasters (beans, roasts, brews, recipes).
 
@@ -19,6 +19,8 @@ Your job, for one new Request:
    - need: one or two sentences in the first person ("I need to ..."), describing the need and why it matters, without prescribing a solution.
 
 If you match, give your confidence (0 to 1) and a one-line reason a submitter can judge, naming the shared need.
+
+If you don't match, set closestProblem to the existing Problem closest to this Request's need, with your confidence (0 to 1) that it is the same need; null if there are no existing Problems. If you match, set closestProblem to null.
 
 You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.
 
@@ -36,6 +38,13 @@ const schema = z.object({
     title: z.string(),
     need: z.string(),
   }),
+  closestProblem: z
+    .object({
+      id: z.number().int().describe("Id of the closest existing Problem"),
+      confidence: z.number().min(0).max(1).describe("Confidence that it is the same need"),
+    })
+    .nullable()
+    .describe("With no match: the closest existing Problem; null when you match or there are none"),
 });
 
 const MAX_DESCRIPTION = 300;
@@ -105,18 +114,34 @@ export function createLlmMatcher(db: Db, caller: AiCaller): Matcher {
       shownProblems: problems,
     });
 
-    return {
-      match:
-        output.matchedProblemId === null
-          ? null
-          : {
-              problemId: output.matchedProblemId,
-              confidence: output.confidence,
-              reason: output.reason,
-            },
-      newProblem: output.newProblem,
-      reason: output.reason,
-      aiCallId: aiCall.id,
-    };
+    return { ...toMatcherResult(output), aiCallId: aiCall.id };
   };
+}
+
+function toMatcherResult(output: z.infer<typeof schema>): MatcherResult {
+  return {
+    match:
+      output.matchedProblemId === null
+        ? null
+        : { problemId: output.matchedProblemId, confidence: output.confidence, reason: output.reason },
+    newProblem: output.newProblem,
+    closestProblem:
+      output.matchedProblemId === null && output.closestProblem
+        ? { problemId: output.closestProblem.id, confidence: output.closestProblem.confidence }
+        : null,
+    reason: output.reason,
+  };
+}
+
+/**
+ * The Matcher's answer as read back from its AI call record's raw output, so the server can
+ * rebuild a proposal without trusting the client. Null if the output doesn't parse.
+ */
+export function matcherResultFromOutput(output: string): MatcherResult | null {
+  try {
+    const parsed = schema.safeParse(JSON.parse(output));
+    return parsed.success ? toMatcherResult(parsed.data) : null;
+  } catch {
+    return null;
+  }
 }
