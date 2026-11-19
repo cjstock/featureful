@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { scorePriority, type CriterionKey, type PriorityScore } from "./scoring";
+import { AI_ESTIMATE_NOTE, isAiEstimate, scorePriority, type CriterionKey, type PriorityScore } from "./scoring";
 
 const criterion = (score: PriorityScore, key: CriterionKey) =>
   score.breakdown.find((c) => c.criterion === key)!;
@@ -146,5 +146,21 @@ describe("Override", () => {
   it("applies to a Problem that is not yet evaluated", () => {
     const score = scorePriority({ supporterCount: 1, impact: null, strategicFit: null, effort: null, risk: null, override: 70 });
     expect(score).toMatchObject({ total: 70, computedTotal: 0, overridden: true, evaluated: false });
+  });
+});
+
+describe("AI estimates", () => {
+  it.each<[CriterionKey, boolean]>([
+    ["demand", false],
+    ["impact", false],
+    ["strategicFit", false],
+    ["effort", true],
+    ["risk", true],
+  ])("%s is labelled an AI estimate: %s", (key, expected) => {
+    expect(isAiEstimate(key)).toBe(expected);
+  });
+
+  it("explains that the AI hasn't seen the codebase", () => {
+    expect(AI_ESTIMATE_NOTE).toBe("Judged by AI without seeing the codebase; an engineer should confirm.");
   });
 });

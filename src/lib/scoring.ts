@@ -28,6 +28,19 @@ const CRITERIA: readonly CriterionKey[] = ["demand", "impact", "strategicFit", "
 /** Lower is better for these, so they are inverted (6 − score) before weighting. */
 const INVERTED: ReadonlySet<CriterionKey> = new Set(["effort", "risk"]);
 
+/**
+ * Effort and Risk depend on the codebase, which the AI never sees, so Internal stakeholders see
+ * them tagged "AI estimate" with `AI_ESTIMATE_NOTE` as the explanation.
+ */
+const AI_ESTIMATES: ReadonlySet<CriterionKey> = new Set(["effort", "risk"]);
+
+export const AI_ESTIMATE_NOTE = "Judged by AI without seeing the codebase; an engineer should confirm.";
+
+/** Whether a criterion's score is shown as an AI estimate an engineer should confirm. */
+export function isAiEstimate(criterion: CriterionKey): boolean {
+  return AI_ESTIMATES.has(criterion);
+}
+
 const clamp = (n: number, min: number, max: number) => Math.min(max, Math.max(min, n));
 
 /** A 1–5 criterion score (clamped) on the "higher raises priority" scale: Effort and Risk inverted. */
