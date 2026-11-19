@@ -5,9 +5,12 @@
 import { describe, expect, it } from "vitest";
 import { createDb } from "@/db";
 import { aiCalls } from "@/db/schema";
-import { offlineModel } from "@/lib/ai";
+import { offlineModel, type AiMeter } from "@/lib/ai";
 import type { MatchingExample, ProblemSummary } from "./index";
 import { createLlmMatcher, isMatcherPromptFor } from "./llm-matcher";
+
+/** A seed or eval AI call must bring a per-run meter; these tests need no cap. */
+const unmetered: AiMeter = { beforeCall() {}, afterCall() {} };
 
 const ANSWER = JSON.stringify({
   matchedProblemId: null,
@@ -58,7 +61,7 @@ const REQUEST = {
 
 async function matcherCall() {
   const db = createDb(":memory:");
-  const matcher = createLlmMatcher(db, { source: "eval", person: null, model: offlineModel(ANSWER) });
+  const matcher = createLlmMatcher(db, { source: "eval", person: null, model: offlineModel(ANSWER), meter: unmetered });
   await matcher(REQUEST, PROBLEMS, [EXAMPLE]);
   return db.select().from(aiCalls).get()!;
 }

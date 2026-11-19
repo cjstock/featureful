@@ -12,10 +12,13 @@ export function DecisionBrief({
   problemId,
   brief,
   viewer,
+  disabledReason = null,
 }: {
   problemId: number;
   brief: StoredBrief | null;
   viewer: Person;
+  /** Why "Generate brief" is disabled (Brief writer off, or AI budget reached); null if it isn't. */
+  disabledReason?: string | null;
 }) {
   if (!isInternalStakeholder(viewer)) return null;
   return (
@@ -31,7 +34,7 @@ export function DecisionBrief({
         </CardDescription>
         {isPm(viewer) && (
           <CardAction>
-            <GenerateBriefButton problemId={problemId} hasBrief={brief !== null} />
+            <GenerateBriefButton problemId={problemId} hasBrief={brief !== null} disabledReason={disabledReason} />
           </CardAction>
         )}
       </CardHeader>

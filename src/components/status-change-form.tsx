@@ -13,15 +13,21 @@ import { Textarea } from "@/components/ui/textarea";
 const selectClass =
   "h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-/** PM only: change a Problem's Status with a Decision note; the AI can draft the note for editing. */
+/**
+ * PM only: change a Problem's Status with a Decision note; the AI can draft the note for editing.
+ * "Draft with AI" is disabled, with `draftDisabledReason` shown, while the Decision note drafter
+ * is switched off or the AI budget is reached; the PM writes the note by hand.
+ */
 export function StatusChangeForm({
   problemId,
   status: currentStatus,
   note: currentNote,
+  draftDisabledReason = null,
 }: {
   problemId: number;
   status: Status;
   note: string | null;
+  draftDisabledReason?: string | null;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -86,7 +92,7 @@ export function StatusChangeForm({
       <div className="space-y-1.5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Label htmlFor={`decision-note-${problemId}`}>Decision note (Customers see this)</Label>
-          <Button type="button" variant="ghost" size="sm" onClick={draft} disabled={busy}>
+          <Button type="button" variant="ghost" size="sm" onClick={draft} disabled={busy || draftDisabledReason !== null}>
             {drafting ? <Loader2 className="animate-spin" /> : <Sparkles />}
             {drafting ? "Drafting…" : "Draft with AI"}
           </Button>
@@ -102,6 +108,7 @@ export function StatusChangeForm({
           placeholder="Explain to supporters why the Status is changing."
         />
       </div>
+      {draftDisabledReason && <p className="text-xs text-muted-foreground">{draftDisabledReason}</p>}
       <p className="text-xs text-muted-foreground">
         The AI draft uses the Decision brief (if any) and the Evidence. Edit it as needed; nothing is
         saved until you click Save.

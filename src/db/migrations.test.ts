@@ -1,7 +1,7 @@
 /**
  * A migration must apply to a database that already holds data, without losing any of it.
  * Each test builds a database at an earlier migration (v1: up to 0001; before the cut: up to
- * 0002; after the cut: up to 0003) with data in it, then runs every migration on it, as `getDb` does on startup.
+ * 0002; after the cut: up to 0003; Escalation: up to 0004) with data in it, then runs every migration on it, as `getDb` does on startup.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -17,6 +17,7 @@ import * as schema from "@/db/schema";
 const V1_TAGS = ["0000_init", "0001_match_review"];
 const PRE_CUT_TAGS = [...V1_TAGS, "0002_ai_calls"];
 const POST_CUT_TAGS = [...PRE_CUT_TAGS, "0003_drop_boundary_note"];
+const ESCALATION_TAGS = [...POST_CUT_TAGS, "0004_escalation"];
 
 let dir: string;
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -231,6 +232,58 @@ describe("migration 0004_escalation and its backfill", () => {
     db.delete(schema.problems).where(eq(schema.problems.id, 3)).run();
     expect(decisions()[0]).toMatchObject({ closestProblemId: null, closestConfidence: 0.5 });
 
+    db.$client.close();
+    again.$client.close();
+  });
+});
+
+describe("migration 0005_ai_controls", () => {
+  it("applies to a database with data (up to 0004), switching every callable module on with no flips, and keeps every row", () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "featureful-migration-"));
+    const file = path.join(dir, "escalation.db");
+
+    // A database at 0004, with data, written with raw SQL so it doesn't depend on today's schema.
+    const before = open(file);
+    migrate(before.db, { migrationsFolder: migrationsUpTo(ESCALATION_TAGS) });
+    before.sqlite.exec(`
+      INSERT INTO people (id, name, role) VALUES (1, 'Alex', 'customer'), (2, 'Sam', 'pm');
+      INSERT INTO problems (id, title, need, status, created_at) VALUES (1, 'Repeat a brew', 'I need to.', 'open', 1);
+      INSERT INTO requests (id, problem_id, author_id, title, description, created_at)
+        VALUES (1, 1, 1, 'Save recipes', 'Let me save a recipe.', 1);
+      INSERT INTO supports (person_id, problem_id, created_at) VALUES (1, 1, 1);
+      INSERT INTO ai_calls (id, time, module, model, prompt_version, outcome, source, system, prompt, cost_usd)
+        VALUES (1, 1, 'matcher', 'claude-sonnet-5-5', 'ab12cd34', 'ok', 'app', 'system', 'prompt', 0.004);
+      INSERT INTO matching_decisions
+        (id, request_id, proposed_problem_id, confidence, reason, proposed_title, proposed_need,
+         submitter_choice, created_at, matcher_outcome, escalation_reasons, ai_call_id)
+        VALUES (1, 1, 1, 0.9, 'Same need', 'Repeat a brew', 'I need to.', 'accepted', 1, 'ok', '[]', 1);
+    `);
+    expect(columnsOf(before.sqlite, "ai_module_settings")).toEqual([]);
+    before.sqlite.close();
+
+    const db = createDb(file);
+
+    expect(db.select().from(schema.aiModuleSettings).orderBy(schema.aiModuleSettings.module).all()).toEqual(
+      [...schema.CALLABLE_AI_MODULES].sort().map((module) => ({ module, on: true })),
+    );
+    expect(db.select().from(schema.aiModuleFlips).all()).toEqual([]);
+    expect(db.select().from(schema.people).all()).toHaveLength(2);
+    expect(db.select().from(schema.requests).all()).toMatchObject([{ id: 1, problemId: 1 }]);
+    expect(db.select().from(schema.supports).all()).toHaveLength(1);
+    expect(db.select().from(schema.aiCalls).get()).toMatchObject({ id: 1, costUsd: 0.004 });
+    expect(db.select().from(schema.matchingDecisions).get()).toMatchObject({ id: 1, aiCallId: 1, escalationReasons: [] });
+
+    // A flip names an existing person; one naming nobody is rejected.
+    db.insert(schema.aiModuleFlips).values({ module: "matcher", on: false, personId: 2 }).run();
+    expect(() => db.insert(schema.aiModuleFlips).values({ module: "matcher", on: false, personId: 99 }).run()).toThrow(/FOREIGN KEY/);
+
+    // Running the migrations again (every startup) changes nothing.
+    db.update(schema.aiModuleSettings).set({ on: false }).where(eq(schema.aiModuleSettings.module, "brief")).run();
+    const again = createDb(file);
+    expect(again.select().from(schema.aiModuleSettings).where(eq(schema.aiModuleSettings.module, "brief")).get()).toEqual({
+      module: "brief",
+      on: false,
+    });
     db.$client.close();
     again.$client.close();
   });

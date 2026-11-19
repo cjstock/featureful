@@ -8,14 +8,27 @@
  *
  * Flags: --dry-run, --db=<path> (default DATABASE_PATH, or :memory: for a dry run),
  *        --max-ai-calls=<n> (default 60; the seed aborts rather than exceed it).
+ * Every AI call is also metered against SEED_RUN_CAP's spend ($1 per run, src/lib/config.ts).
  * Runs sequentially and never retries a failed call itself.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { createDb, DATABASE_PATH, type Db } from "@/db";
-import { aiCalls, matchingDecisions, people, problems, productStrategy, requests, supports } from "@/db/schema";
+import {
+  aiCalls,
+  aiModuleFlips,
+  aiModuleSettings,
+  matchingDecisions,
+  people,
+  problems,
+  productStrategy,
+  requests,
+  supports,
+} from "@/db/schema";
 import type { AiCaller } from "@/lib/ai";
+import { createMeter } from "@/lib/ai-meter";
+import { SEED_RUN_CAP } from "@/lib/config";
 import { createIntake, type Matcher } from "@/lib/intake";
 import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { evaluateProblem } from "@/lib/evaluator";
@@ -25,7 +38,7 @@ import { SEED_EXTRA_SUPPORT, SEED_PEOPLE, SEED_REQUESTS } from "./seed-data";
 const args = process.argv.slice(2);
 const flag = (name: string) => args.find((a) => a.startsWith(`--${name}=`))?.split("=").slice(1).join("=");
 const dryRun = args.includes("--dry-run");
-const maxAiCalls = Number(flag("max-ai-calls") ?? 60);
+const maxAiCalls = Number(flag("max-ai-calls") ?? SEED_RUN_CAP.maxCalls);
 const dbFile = flag("db") ?? (dryRun ? ":memory:" : DATABASE_PATH);
 
 function fail(message: string): never {
@@ -33,8 +46,16 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-/** The seed's AI calls are recorded in the seeded database with source "seed". */
-const SEED_CALLER: AiCaller = { source: "seed", person: null };
+/**
+ * The seed's AI calls are recorded in the seeded database with source "seed". They are outside the
+ * daily app budget, so they are metered per run: the meter refuses a call that could pass
+ * SEED_RUN_CAP (or `--max-ai-calls`).
+ */
+const SEED_CALLER: AiCaller = {
+  source: "seed",
+  person: null,
+  meter: createMeter({ maxCalls: Math.min(maxAiCalls, SEED_RUN_CAP.maxCalls), maxCostUsd: SEED_RUN_CAP.maxCostUsd }, "Seed"),
+};
 
 let aiCallCount = 0;
 /** Count one AI call, refusing to go over the cap. */
@@ -54,6 +75,9 @@ function reset(db: Db) {
     tx.delete(requests).run();
     tx.delete(problems).run();
     tx.delete(productStrategy).run();
+    // AI controls go back to their defaults (every module on, no flips); flips name people.
+    tx.delete(aiModuleFlips).run();
+    tx.update(aiModuleSettings).set({ on: true }).run();
     tx.delete(people).run();
     tx.run(sql`DELETE FROM sqlite_sequence`);
   });

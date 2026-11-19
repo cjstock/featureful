@@ -16,6 +16,8 @@ import {
 } from "@/lib/ai";
 
 const prices = { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 };
+/** For eval-source calls, which must bring a per-run meter; no cap. */
+const unmetered: AiMeter = { beforeCall() {}, afterCall() {} };
 const schema = z.object({ answer: z.string() });
 
 const usage = {
@@ -216,10 +218,34 @@ describe("aiGenerate", () => {
     };
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     db.$client.close();
+    // An eval run: an app call would stop earlier, at the AI controls (next test).
+    const evalRun = { ...base(), source: "eval" as const, meter: unmetered };
 
-    expect(await aiGenerate({ ...base(), model }).catch((error) => error)).toBe(failure);
-    expect(await aiGenerate({ ...base(), model, meter: refusing }).catch((error) => error)).toBe(refusal);
+    expect(await aiGenerate({ ...evalRun, model }).catch((error) => error)).toBe(failure);
+    expect(await aiGenerate({ ...evalRun, model, meter: refusing }).catch((error) => error)).toBe(refusal);
     expect(logged).toHaveBeenCalledTimes(2);
+    logged.mockRestore();
+  });
+
+  it.each(["eval", "seed"] as const)("refuses a %s AI call with no per-run meter, without sending it", async (source) => {
+    const model = answering('{"answer":"yes"}');
+    // The type forbids it; the check holds for code that gets past the type (casts, plain JS).
+    const unmeteredCall = { ...base(), source, person: null, model } as unknown as Parameters<typeof aiGenerate>[0];
+
+    await expect(aiGenerate(unmeteredCall)).rejects.toThrow(/needs a per-run meter/);
+
+    expect(model.doGenerateCalls).toHaveLength(0);
+    expect(db.select().from(aiCalls).get()).toMatchObject({ outcome: "error", source, error: expect.stringMatching(/per-run meter/) });
+  });
+
+  it("doesn't send an app call when the AI controls (off switch, today's spend) can't be read", async () => {
+    const model = answering('{"answer":"yes"}');
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$client.close();
+
+    await expect(aiGenerate({ ...base(), model })).rejects.toThrow(/not open/);
+
+    expect(model.doGenerateCalls).toHaveLength(0);
     logged.mockRestore();
   });
 
@@ -230,8 +256,9 @@ describe("aiGenerate", () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     db.$client.close();
 
-    await expect(aiGenerate({ ...base(), model, meter })).rejects.toThrow();
-    await expect(aiGenerate({ ...base(), model: answering("not json"), meter })).rejects.toThrow();
+    const evalRun = { ...base(), source: "eval" as const, meter };
+    await expect(aiGenerate({ ...evalRun, model, meter })).rejects.toThrow();
+    await expect(aiGenerate({ ...evalRun, model: answering("not json"), meter })).rejects.toThrow();
 
     expect(costs).toEqual([expect.closeTo(0.0043, 8), expect.closeTo(0.0043, 8)]);
     logged.mockRestore();
@@ -245,9 +272,12 @@ describe("cost maths", () => {
     ).toBeCloseTo(2 + 0.1 + 2.5 + 1);
   });
 
-  it("prices the worst case as prompt characters ÷ 4 plus a full answer at the output cap", () => {
-    // 4,000 chars = 1,000 input tokens = $0.002; 1,000 output tokens = $0.01.
-    expect(worstCaseCost(4_000, 1_000, prices)).toBeCloseTo(0.012);
+  it("prices the worst case as prompt characters ÷ 3 at the dearer input price, plus a full answer at the output cap", () => {
+    // 3,000 chars = 1,000 input tokens at $2.50 (cache write beats $2 uncached) = $0.0025;
+    // 1,000 output tokens at $10 = $0.01.
+    expect(worstCaseCost(3_000, 1_000, prices)).toBeCloseTo(0.0125, 10);
+    // When uncached input is the dearer one, it's used.
+    expect(worstCaseCost(3_000, 0, { ...prices, input: 3 })).toBeCloseTo(0.003, 10);
   });
 });
 

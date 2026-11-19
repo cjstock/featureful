@@ -10,6 +10,7 @@ import { getCurrentPerson } from "@/lib/identity";
 import { createIntake, type Proposal } from "@/lib/intake";
 import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { tryEvaluateProblem } from "@/lib/evaluator";
+import { checkProposeRateLimit, checkSubmitRateLimit } from "@/lib/rate-limit";
 
 const draftSchema = z.object({
   title: z.string().trim().min(1, "Give your Request a title").max(200),
@@ -51,6 +52,13 @@ function intake(personId: number) {
   });
 }
 
+/**
+ * Proposals still waiting on the Matcher, per person: counted against the propose rate limit,
+ * since their AI calls are recorded only when they finish. Per process, like the budget's
+ * in-flight reservation.
+ */
+const pendingProposals = new Map<number, number>();
+
 /** Step 1: ask the AI to match the Request. Saves nothing. */
 export async function proposeRequest(
   input: RequestDraftInput,
@@ -59,7 +67,22 @@ export async function proposeRequest(
     // Every role (Customer, Support agent, PM) may submit Requests.
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    return { ok: true, proposal: await intake(person.id).propose(draft) };
+    // Both limits are checked before the Matcher runs, so a person over either spends no AI call.
+    // The submit limit is checked here too, so nobody is matched only to be refused at save.
+    const now = new Date();
+    const pending = pendingProposals.get(person.id) ?? 0;
+    const limit = checkSubmitRateLimit(getDb(), person.id, now);
+    if (!limit.ok) return { ok: false, error: limit.message };
+    const proposeLimit = checkProposeRateLimit(getDb(), person.id, now, pending);
+    if (!proposeLimit.ok) return { ok: false, error: proposeLimit.message };
+    pendingProposals.set(person.id, pending + 1);
+    try {
+      return { ok: true, proposal: await intake(person.id).propose(draft) };
+    } finally {
+      const left = (pendingProposals.get(person.id) ?? 1) - 1;
+      if (left > 0) pendingProposals.set(person.id, left);
+      else pendingProposals.delete(person.id);
+    }
   } catch (error) {
     console.error("proposeRequest failed", error);
     return { ok: false, error: message(error) };
@@ -75,6 +98,9 @@ export async function confirmRequest(
   try {
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
+    // The rate limit itself: this check and the save below run with no await between them.
+    const limit = checkSubmitRateLimit(getDb(), person.id, new Date());
+    if (!limit.ok) return { ok: false, error: limit.message };
     const { problemId } = intake(person.id).confirmFromClient(
       draft,
       proposalClaimSchema.parse(proposal),
