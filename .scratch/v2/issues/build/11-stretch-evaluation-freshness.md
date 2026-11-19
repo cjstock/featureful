@@ -6,7 +6,7 @@
 
 **Blocked by:** 03
 
-**Status:** ready-for-agent
+**Status:** done ([#7](https://github.com/cjstock/featureful/pull/7))
 
 - [ ] Stale = max(Evidence.createdAt) > `evaluatedAt`. Failed = the latest AI call with module Evaluator and this Problem has outcome ≠ ok.
 - [ ] Shown on the Problem page and as a small marker in the Problems list for Internal stakeholders.

@@ -6,7 +6,7 @@
 
 **Blocked by:** None
 
-**Status:** ready-for-agent
+**Status:** done ([#1](https://github.com/cjstock/featureful/pull/1))
 
 - [ ] The tag shows only where Effort and Risk appear to Internal stakeholders.
 - [ ] Copy uses the glossary terms (Effort, Risk).

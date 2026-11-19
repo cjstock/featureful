@@ -11,7 +11,7 @@ Detail: [metrics ticket](../07-review-metrics.md).
 
 **Blocked by:** 05, 07
 
-**Status:** ready-for-agent
+**Status:** ready-for-agent (blocked: 04 is parked, needs-human)
 
 - [ ] PM agreement rate = Confirms ÷ spot-check Match reviews, over the last 30 spot checks. Escalation agreement is the same measure over Escalations. Bypassed decisions are excluded from both.
 - [ ] Escalation rate = escalated ÷ all Matching decisions, last 7 days, with a per-reason breakdown in Details.
