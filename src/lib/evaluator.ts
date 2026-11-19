@@ -79,6 +79,9 @@ export async function runEvaluator(
 export async function evaluateProblem(db: Db, problemId: number, caller: AiCaller): Promise<Evaluation> {
   const problem = db.select().from(problems).where(eq(problems.id, problemId)).get();
   if (!problem) throw new Error(`Problem ${problemId} not found`);
+  // Taken before the Evidence is read: Evidence that arrives during the AI call is newer than
+  // evaluated_at, so the Problem shows as stale (see src/lib/evaluation-freshness.ts).
+  const evaluatedAt = new Date();
   const evidence = db
     .select({ title: requests.title, description: requests.description })
     .from(requests)
@@ -102,7 +105,7 @@ export async function evaluateProblem(db: Db, problemId: number, caller: AiCalle
       effortReason: evaluation.effort.reason,
       riskScore: evaluation.risk.score,
       riskReason: evaluation.risk.reason,
-      evaluatedAt: new Date(),
+      evaluatedAt,
     })
     .where(eq(problems.id, problemId))
     .run();
