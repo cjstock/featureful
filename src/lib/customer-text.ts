@@ -8,15 +8,16 @@ export const CUSTOMER_TEXT_TAGS = ["request_title", "request_description", "evid
 
 export type CustomerTextTag = (typeof CUSTOMER_TEXT_TAGS)[number];
 
-/** A closing Customer-text tag, in any case and with any spacing: `</evidence>`, `</ EVIDENCE >`. */
-const CLOSING_TAG = new RegExp(`<(\\s*/\\s*(?:${CUSTOMER_TEXT_TAGS.join("|")})\\s*>)`, "gi");
+/** `<` and its look-alikes: fullwidth `＜` (U+FF1C) and small form `﹤` (U+FE64). */
+const LESS_THAN = /[<＜﹤]/g;
 
 /**
- * Wrap Customer text in `<tag>…</tag>`. Any closing Customer-text tag inside the text has its `<`
- * escaped as `&lt;`, so the text can't end its tag early and pose as instructions.
+ * Wrap Customer text in `<tag>…</tag>`. Every `<` (or look-alike) inside the text is escaped as
+ * `&lt;`, so no tag of any kind can open or close inside Customer text: it can't end its own tag
+ * early, plant another, or pose as instructions.
  */
 export function tagCustomerText(tag: CustomerTextTag, text: string): string {
-  return `<${tag}>${text.replace(CLOSING_TAG, "&lt;$1")}</${tag}>`;
+  return `<${tag}>${text.replace(LESS_THAN, "&lt;")}</${tag}>`;
 }
 
 /** The system prompt paragraph for a prompt that tags Customer text in `tags`. */

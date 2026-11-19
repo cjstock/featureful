@@ -7,7 +7,7 @@ export const MAX_EVIDENCE = 40;
 export interface PromptEvidence {
   title: string;
   description: string;
-  /** Included as "[name]" when given (internal-only prompts). */
+  /** Included as "[name]" when given (internal-only prompts); inside the `<evidence>` tag when delimited. */
   authorName?: string;
 }
 
@@ -23,8 +23,8 @@ export function formatEvidence(evidence: PromptEvidence[], { delimit = false } =
       ? "(no Evidence yet)"
       : shown
           .map((r, i) => {
-            const text = `${r.title}\n   ${r.description.replace(/\s+/g, " ")}`;
-            return `${i + 1}. ${r.authorName ? `[${r.authorName}] ` : ""}${delimit ? tagCustomerText("evidence", text) : text}`;
+            const text = `${r.authorName ? `[${r.authorName}] ` : ""}${r.title}\n   ${r.description.replace(/\s+/g, " ")}`;
+            return `${i + 1}. ${delimit ? tagCustomerText("evidence", text) : text}`;
           })
           .join("\n");
   const truncated = evidence.length > shown.length ? `, first ${shown.length} shown` : "";

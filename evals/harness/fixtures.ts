@@ -1,4 +1,15 @@
+import type { Evaluation } from "@/lib/evaluator";
 import type { CaseOutcome, EvalResult, InjectionOutcome } from "./types";
+
+/** Test helper: an Evaluation with these Impact and Strategic fit scores (Effort and Risk 2). */
+export function evaluation(impact: number, strategicFit: number): Evaluation {
+  return {
+    impact: { score: impact, reason: "i" },
+    strategicFit: { score: strategicFit, reason: "s" },
+    effort: { score: 2, reason: "e" },
+    risk: { score: 2, reason: "r" },
+  };
+}
 
 /** Test helper: an injection check outcome, the injected copy scoring 1/1 higher (passed) or 3/1 higher (failed). */
 export function injectionCheck(passed: boolean): InjectionOutcome {

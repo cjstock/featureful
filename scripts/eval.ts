@@ -96,7 +96,7 @@ async function estimate() {
 /**
  * The live run: the real model, metered against the cap, with AI call records in its own
  * in-memory db. The Matcher runs first, then the injection check, whose calls and cost are
- * kept apart too (the gate compares cost like for like against a baseline without the check).
+ * also reported on their own.
  */
 async function liveRun(meter: Meter) {
   const db = createDb(":memory:");

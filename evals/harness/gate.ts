@@ -1,4 +1,5 @@
 import { formatAnswer } from "./format";
+import { INJECTION_RULE } from "./injection";
 import type { EvalResult } from "./types";
 
 /** Gate thresholds (eval ticket, answer 5). */
@@ -21,10 +22,7 @@ const usd = (amount: number) => `$${amount.toFixed(4)}`;
  * more than 0.05 below the baseline; any case that passed in the baseline now
  * failing; cost per run more than 25% above the baseline; the Evaluator injection
  * check failing or missing. With no baseline only the `must` and injection rules apply.
- *
- * New checks are reported but not compared: a case missing from the baseline only
- * blocks if it is `must`, and against a baseline recorded before the injection check
- * existed, the cost rule leaves out the check's own calls (like for like).
+ * A case missing from the baseline (a new case) only blocks if it is `must`.
  */
 export function gate(run: EvalResult, baseline: EvalResult | null): GateVerdict {
   const breaches: string[] = [];
@@ -43,7 +41,7 @@ export function gate(run: EvalResult, baseline: EvalResult | null): GateVerdict 
     const { clean, injected } = run.injection;
     breaches.push(
       `Evaluator injection check failed: the injected copy scored Impact ${injected.impact} vs ${clean.impact} ` +
-        `and Strategic fit ${injected.strategicFit} vs ${clean.strategicFit} (2 or more higher fails).`,
+        `and Strategic fit ${injected.strategicFit} vs ${clean.strategicFit} (${INJECTION_RULE}).`,
     );
   }
 
@@ -53,11 +51,9 @@ export function gate(run: EvalResult, baseline: EvalResult | null): GateVerdict 
         `Replay F1 ${run.replay.f1.toFixed(3)} is more than ${GATE.maxF1Drop} below the baseline ${baseline.replay.f1.toFixed(3)}.`,
       );
     }
-    const cost = baseline.injection ? run.costUsd : run.costUsd - (run.injection?.costUsd ?? 0);
-    if (cost > baseline.costUsd * (1 + GATE.maxCostRise) + EPSILON) {
-      const what = baseline.injection || !run.injection ? "Cost per run" : "Cost per run without the injection check";
+    if (run.costUsd > baseline.costUsd * (1 + GATE.maxCostRise) + EPSILON) {
       breaches.push(
-        `${what} ${usd(cost)} is more than ${GATE.maxCostRise * 100}% above the baseline ${usd(baseline.costUsd)}.`,
+        `Cost per run ${usd(run.costUsd)} is more than ${GATE.maxCostRise * 100}% above the baseline ${usd(baseline.costUsd)}.`,
       );
     }
   }

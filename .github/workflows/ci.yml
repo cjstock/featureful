@@ -51,8 +51,11 @@ jobs:
               - 'src/lib/match-review.ts'
               - 'src/lib/customer-text.ts'
               - 'src/lib/evidence-prompt.ts'
+              - 'src/lib/product-strategy.ts'
+              - 'src/db/schema.ts'
               - 'evals/**'
               - 'scripts/eval.ts'
+              - 'scripts/seed-data.ts'
               - 'package-lock.json'
               - '.github/workflows/ci.yml'
       - name: No AI files changed

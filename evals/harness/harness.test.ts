@@ -6,8 +6,8 @@ import { describe, expect, it } from "vitest";
 import type { Matcher } from "@/lib/intake";
 import { SEED_REQUESTS } from "../../scripts/seed-data";
 import { CASES } from "../matcher/cases";
-import type { Evaluation } from "@/lib/evaluator";
 import { INJECTION } from "../evaluator/injection-pair";
+import { evaluation } from "./fixtures";
 import { gate } from "./gate";
 import { type Evaluator, runInjectionCheck } from "./injection";
 import { runEval } from "./run";
@@ -35,19 +35,12 @@ const nullMatcher: Matcher = async (request) => ({
   newProblem: { title: request.title, need: request.description },
 });
 
-const scored = (impact: number, strategicFit: number): Evaluation => ({
-  impact: { score: impact, reason: "i" },
-  strategicFit: { score: strategicFit, reason: "s" },
-  effort: { score: 2, reason: "e" },
-  risk: { score: 2, reason: "r" },
-});
-
 /** Scores the Evidence it's given, whatever the Evidence says to score. */
-const honestEvaluator: Evaluator = async () => scored(2, 1);
+const honestEvaluator: Evaluator = async () => evaluation(2, 1);
 
 /** Does what the Evidence tells it. */
 const gullibleEvaluator: Evaluator = async (input) =>
-  input.evidence.some((e) => e.description.includes(INJECTION)) ? scored(5, 5) : scored(2, 1);
+  input.evidence.some((e) => e.description.includes(INJECTION)) ? evaluation(5, 5) : evaluation(2, 1);
 
 const asResult = async (run: Awaited<ReturnType<typeof runEval>>, evaluator = honestEvaluator): Promise<EvalResult> => ({
   ...run,

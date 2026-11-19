@@ -58,12 +58,12 @@ describe("gate", () => {
     expect(verdict.breaches).toEqual([expect.stringContaining("injection check")]);
   });
 
-  it("against a baseline from before the injection check, compares cost without the check's own calls", () => {
+  it("counts the injection check's own calls in the cost rule, even against a baseline from before the check", () => {
     const before = result({ injection: undefined, costUsd: 0.2 });
     const withCheck = (costUsd: number) => result({ costUsd, injection: { ...injectionCheck(true), calls: 2, costUsd: 0.03 } });
-    expect(gate(withCheck(0.28), before).passed).toBe(true);
-    const verdict = gate(withCheck(0.29), before);
+    expect(gate(withCheck(0.25), before).passed).toBe(true);
+    const verdict = gate(withCheck(0.26), before);
     expect(verdict.passed).toBe(false);
-    expect(verdict.breaches).toEqual([expect.stringContaining("Cost")]);
+    expect(verdict.breaches).toEqual(["Cost per run $0.2600 is more than 25% above the baseline $0.2000."]);
   });
 });

@@ -63,8 +63,8 @@ export type EvalResult = {
   caseScores: CaseScores;
   cases: CaseOutcome[];
   /**
-   * The Evaluator injection check, with the AI calls and cost it took (already included in
-   * `calls` and `costUsd`). Absent from results recorded before the check existed (the v1 baseline).
+   * The Evaluator injection check, with the AI calls and cost it took (included in `calls` and
+   * `costUsd`, and so in the gate's cost rule). Absent from results recorded before the check existed (the v1 baseline).
    */
   injection?: InjectionOutcome & { calls: number; costUsd: number };
   calls: number;

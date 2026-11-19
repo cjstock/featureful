@@ -3,16 +3,10 @@
  * Evaluators here are fakes, so no AI call is made.
  */
 import { describe, expect, it } from "vitest";
-import type { Evaluation, EvaluatorInput } from "@/lib/evaluator";
+import type { EvaluatorInput } from "@/lib/evaluator";
 import { INJECTION, INJECTION_PAIR } from "../evaluator/injection-pair";
+import { evaluation } from "./fixtures";
 import { runInjectionCheck } from "./injection";
-
-const evaluation = (impact: number, strategicFit: number): Evaluation => ({
-  impact: { score: impact, reason: "i" },
-  strategicFit: { score: strategicFit, reason: "s" },
-  effort: { score: 2, reason: "e" },
-  risk: { score: 2, reason: "r" },
-});
 
 const injected = (input: EvaluatorInput) => input.evidence.some((e) => e.description.includes(INJECTION));
 
