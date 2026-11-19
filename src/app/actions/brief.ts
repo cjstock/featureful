@@ -3,15 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/db/client";
 import { idSchema, message, type Result } from "@/lib/action-result";
+import { appCaller } from "@/lib/ai";
 import { generateBrief } from "@/lib/brief-writer";
 import { requireRole } from "@/lib/identity";
 
 /** PM only: generate or regenerate a Problem's Decision brief (one AI call). */
 export async function generateDecisionBrief(problemId: number): Promise<Result> {
   try {
-    await requireRole("pm");
+    const pm = await requireRole("pm");
     const id = idSchema.parse(problemId);
-    await generateBrief(getDb(), id);
+    await generateBrief(getDb(), id, appCaller(pm.id));
     revalidatePath(`/problems/${id}`);
     return { ok: true };
   } catch (error) {

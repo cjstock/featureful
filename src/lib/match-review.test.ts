@@ -1,13 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb, type Db } from "@/db";
 import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
-import { createMatchReview, type BoundaryNoteInput, type BoundaryNoteWriter } from "@/lib/match-review";
-import { getProblem } from "@/lib/problems";
+import type { EscalationReason } from "@/db/schema";
+import { createMatchReview, listMatchingExamples } from "@/lib/match-review";
 
-/** Fake AI dependency: returns the current note unchanged. */
-const fakeWriter: BoundaryNoteWriter = async ({ currentNote }) => currentNote ?? "";
+/** A Move or Split note (required). */
+const NOTE = "Different underlying need.";
 
 const NEW_PROBLEM = { title: "Log cupping sessions", need: "I need to record how a coffee tasted." };
 
@@ -45,17 +45,18 @@ function setup() {
     return intake.confirm(draft, proposal, decision, alex.id);
   }
 
-  return { db, alex, sam, flavour, submit, review: createMatchReview({ db, boundaryNoteWriter: fakeWriter }) };
+  return { db, alex, sam, flavour, submit, review: createMatchReview({ db }) };
 }
 
 describe("Match review queue", () => {
-  it("listQueue shows unreviewed Matching decisions newest first, with everything needed to judge them", async () => {
+  it("listQueue shows each escalated decision with everything needed to judge it and its reasons", async () => {
     const { alex, flavour, submit, review } = setup();
     const first = await submit("Cupping notes", true);
     const second = await submit("Tasting journal", false);
 
     const queue = review.listQueue();
 
+    // Mine is different outranks low confidence.
     expect(queue.map((d) => d.request.id)).toEqual([second.requestId, first.requestId]);
     expect(queue[0]).toMatchObject({
       request: { id: second.requestId, title: "Tasting journal", description: "Tasting journal, please." },
@@ -68,13 +69,17 @@ describe("Match review queue", () => {
           reason: "Both about taste.",
         },
         newProblem: NEW_PROBLEM,
+        closestProblem: null,
       },
       submitterChoice: "rejected",
+      matcherOutcome: "ok",
+      escalationReasons: ["mine_is_different", "low_confidence"],
       currentProblem: { id: second.problemId, title: NEW_PROBLEM.title },
       review: null,
     });
     expect(queue[1]).toMatchObject({
       submitterChoice: "accepted",
+      escalationReasons: ["low_confidence"],
       currentProblem: { id: flavour.id, title: "Compare roast flavour" },
     });
     expect(review.countQueue()).toBe(2);
@@ -123,7 +128,11 @@ describe("Match review queue", () => {
     const proposal = await intake.propose(draft);
     intake.confirm(draft, proposal, { createProblem: proposal.newProblem }, alex.id);
 
-    expect(createMatchReview({ db, boundaryNoteWriter: fakeWriter }).listQueue()).toMatchObject([
+    const all = [
+      ...createMatchReview({ db }).listQueue(),
+      ...createMatchReview({ db }).listNotEscalated(),
+    ];
+    expect(all).toMatchObject([
       { proposal: { match: null, newProblem: NEW_PROBLEM }, submitterChoice: "no_match" },
     ]);
   });
@@ -132,7 +141,7 @@ describe("Match review queue", () => {
 /** Proposes no match; each test's `place` decides where the Request goes. */
 const noMatch: Matcher = async () => ({ match: null, newProblem: NEW_PROBLEM });
 
-function setupReview(boundaryNoteWriter: BoundaryNoteWriter = fakeWriter) {
+function setupReview() {
   const db = createDb(":memory:");
   const [alex, priya, sam] = db
     .insert(people)
@@ -152,7 +161,7 @@ function setupReview(boundaryNoteWriter: BoundaryNoteWriter = fakeWriter) {
     .returning()
     .all();
   const intake = createIntake({ db, matcher: noMatch });
-  const review = createMatchReview({ db, boundaryNoteWriter });
+  const review = createMatchReview({ db });
 
   /** Submit a Request through Intake onto `problemId`; returns its Matching decision. */
   async function place(personId: number, problemId: number, title = "Cupping log") {
@@ -237,7 +246,7 @@ describe("Match review: Move", () => {
     const decision = await place(alex.id, grind.id);
     await place(alex.id, grind.id, "Grind notes");
 
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+    review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
 
     expect(supportsOf(db)).toEqual(
       expect.arrayContaining([
@@ -252,7 +261,7 @@ describe("Match review: Move", () => {
     const decision = await place(alex.id, grind.id);
     await place(alex.id, flavour.id, "Flavour notes");
 
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+    review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
 
     expect(supportsOf(db)).toEqual([{ personId: alex.id, problemId: flavour.id }]);
   });
@@ -265,7 +274,7 @@ describe("Match review: Split", () => {
     await place(priya.id, flavour.id, "Flavour wheel");
     const newProblem = { title: "Score cupping sessions", need: "I need to score cuppings." };
 
-    const affected = review.review(decision.id, "split", { newProblem }, sam.id);
+    const affected = review.review(decision.id, "split", { newProblem, note: NOTE }, sam.id);
 
     const created = db.select().from(problems).where(eq(problems.title, newProblem.title)).get();
     expect(created).toMatchObject({ ...newProblem, status: "open" });
@@ -289,7 +298,7 @@ describe("Match review: Split", () => {
     const { alex, sam, flavour, review, place } = setupReview();
     const decision = await place(alex.id, flavour.id);
 
-    expect(() => review.review(decision.id, "split", {}, sam.id)).toThrow();
+    expect(() => review.review(decision.id, "split", { note: NOTE }, sam.id)).toThrow();
     expect(review.countQueue()).toBe(1);
   });
 });
@@ -307,13 +316,13 @@ describe("Match review: a source left without Evidence", () => {
       .where(eq(matchingDecisions.id, other.id))
       .run();
 
-    const affected = review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+    const affected = review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
 
     expect(affected).toEqual([flavour.id]);
     expect(db.select().from(problems).where(eq(problems.id, grind.id)).get()).toBeUndefined();
     expect(supportsOf(db).filter((s) => s.problemId === grind.id)).toEqual([]);
     expect(problemOf(db, decision.requestId)).toBe(flavour.id);
-    const otherItem = review.listQueue().find((i) => i.id === other.id)!;
+    const otherItem = [...review.listQueue(), ...review.listNotEscalated()].find((i) => i.id === other.id)!;
     expect(otherItem.proposal.match).toMatchObject({ problemId: null, problemTitle: null });
     expect(review.listReviewed()[0].review).toMatchObject({
       verdict: "move",
@@ -330,7 +339,7 @@ describe("Match review: refusals", () => {
     review.review(decision.id, "confirm", {}, sam.id);
 
     expect(() =>
-      review.review(decision.id, "move", { targetProblemId: grind.id }, sam.id),
+      review.review(decision.id, "move", { targetProblemId: grind.id, note: NOTE }, sam.id),
     ).toThrow(/already been reviewed/);
     expect(review.listReviewed()[0].review!.verdict).toBe("confirm");
   });
@@ -341,7 +350,7 @@ describe("Match review: refusals", () => {
     const before = requestsOf(db);
 
     expect(() =>
-      review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id),
+      review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id),
     ).toThrow(/already on/);
     expect(requestsOf(db)).toEqual(before);
     expect(review.countQueue()).toBe(1);
@@ -352,102 +361,127 @@ describe("Match review: refusals", () => {
     const decision = await place(alex.id, flavour.id);
     const before = { requests: requestsOf(db), supports: supportsOf(db) };
 
-    expect(() => review.review(decision.id, "move", { targetProblemId: 999 }, sam.id)).toThrow();
+    expect(() => review.review(decision.id, "move", { targetProblemId: 999, note: NOTE }, sam.id)).toThrow();
     expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
     expect(review.countQueue()).toBe(1);
   });
 });
 
-/** Fake BoundaryNoteWriter that records its inputs and writes a note naming the Problem. */
-function recordingWriter() {
-  const calls: BoundaryNoteInput[] = [];
-  const writer: BoundaryNoteWriter = async (input) => {
-    calls.push(input);
-    return `Includes what fits ${input.problem.title}.`;
-  };
-  return { calls, writer };
-}
+/** Give a decision these Escalation reasons (test setup: reason computation is tested in escalation.test.ts). */
+const escalate = (db: Db, id: number, reasons: EscalationReason[]) =>
+  db.update(matchingDecisions).set({ escalationReasons: reasons }).where(eq(matchingDecisions.id, id)).run();
 
-const noteOf = (db: Db, problemId: number) => getProblem(db, problemId)?.problem.boundaryNote;
+describe("Escalation queue", () => {
+  it("lists escalated, unreviewed decisions by strongest reason, then oldest first; the rest are Not escalated", async () => {
+    const { db, alex, flavour, review, place } = setupReview();
+    const given: [string, EscalationReason[]][] = [
+      ["spot", ["spot_check"]],
+      ["near", ["near_miss"]],
+      ["low (older)", ["low_confidence"]],
+      ["bypassed", ["bypassed"]],
+      ["different", ["mine_is_different", "low_confidence"]],
+      ["auto (older)", []],
+      ["low (newer)", ["low_confidence"]],
+      ["demand", ["high_demand_merge"]],
+      ["auto (newer)", []],
+      ["reviewed", ["bypassed"]],
+    ];
+    const ids = new Map<string, number>();
+    for (const [title, reasons] of given) {
+      const d = await place(alex.id, flavour.id, title);
+      escalate(db, d.id, reasons);
+      ids.set(title, d.id);
+    }
+    review.review(ids.get("reviewed")!, "confirm", {}, alex.id);
 
-describe("Match review: Boundary note distillation", () => {
-  it("after a Move, revises the note of the source and destination from the review", async () => {
-    const { calls, writer } = recordingWriter();
-    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview(writer);
-    db.update(problems).set({ boundaryNote: "Includes grind settings." }).where(eq(problems.id, grind.id)).run();
-    const decision = await place(alex.id, grind.id);
-    await place(priya.id, grind.id, "Grind notes"); // keeps the source alive
-    review.review(decision.id, "move", { targetProblemId: flavour.id, note: "Cupping is flavour." }, sam.id);
-
-    await review.distilBoundaryNotes(decision.id);
-
-    expect(calls).toEqual([
-      {
-        problem: { id: grind.id, title: grind.title, need: grind.need },
-        currentNote: "Includes grind settings.",
-        review: {
-          request: { title: "Cupping log", description: "Cupping log, please." },
-          verdict: "move",
-          fromProblem: { id: grind.id, title: grind.title },
-          toProblem: { id: flavour.id, title: flavour.title },
-          note: "Cupping is flavour.",
-        },
-      },
-      expect.objectContaining({ problem: expect.objectContaining({ id: flavour.id }), currentNote: null }),
+    expect(review.listQueue().map((d) => d.request.title)).toEqual([
+      "bypassed",
+      "different",
+      "demand",
+      "low (older)",
+      "low (newer)",
+      "near",
+      "spot",
     ]);
-    expect(noteOf(db, grind.id)).toBe("Includes what fits Dial in grind size.");
-    expect(noteOf(db, flavour.id)).toBe("Includes what fits Compare roast flavour.");
+    expect(review.listQueue()[1].escalationReasons).toEqual(["mine_is_different", "low_confidence"]);
+    expect(review.countQueue()).toBe(7);
+    // Auto-accepted decisions, newest first, still reviewable.
+    expect(review.listNotEscalated().map((d) => d.request.title)).toEqual(["auto (newer)", "auto (older)"]);
+    review.review(ids.get("auto (older)")!, "confirm", {}, alex.id);
+    expect(review.listNotEscalated().map((d) => d.request.title)).toEqual(["auto (newer)"]);
+  });
+});
+
+describe("Match review: notes and Regression cases", () => {
+  it("refuses a Move or Split without a note, changing nothing; Confirm's note stays optional", async () => {
+    const { db, alex, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    const before = { requests: requestsOf(db), supports: supportsOf(db) };
+
+    for (const note of [undefined, null, "  "]) {
+      expect(() => review.review(decision.id, "move", { targetProblemId: grind.id, note }, sam.id)).toThrow(
+        /What makes these different needs/,
+      );
+      expect(() => review.review(decision.id, "split", { newProblem: NEW_PROBLEM, note }, sam.id)).toThrow(
+        /What makes these different needs/,
+      );
+    }
+    expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
+    expect(review.review(decision.id, "confirm", {}, sam.id)).toEqual([flavour.id]);
   });
 
-  it("Confirm without a note makes no call; Confirm with a note revises the Request's Problem", async () => {
-    const { calls, writer } = recordingWriter();
-    const { db, alex, sam, grind, review, place } = setupReview(writer);
-    const silent = await place(alex.id, grind.id);
-    const noted = await place(alex.id, grind.id, "Grind notes");
-    review.review(silent.id, "confirm", {}, sam.id);
-    review.review(noted.id, "confirm", { note: "Grind memory, not grinder care." }, sam.id);
+  it("marks a Move or Split as a Regression case by default, unless the PM unticks it; a Confirm is not one by default", async () => {
+    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview();
+    const moved = await place(alex.id, grind.id, "Moved");
+    const split = await place(alex.id, grind.id, "Split");
+    const unmarked = await place(priya.id, grind.id, "Unmarked");
+    const confirmed = await place(priya.id, flavour.id, "Confirmed");
 
-    await review.distilBoundaryNotes(silent.id);
-    expect(calls).toEqual([]);
+    review.review(moved.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
+    review.review(split.id, "split", { newProblem: NEW_PROBLEM, note: NOTE }, sam.id);
+    review.review(unmarked.id, "move", { targetProblemId: flavour.id, note: NOTE, regressionCase: false }, sam.id);
+    review.review(confirmed.id, "confirm", {}, sam.id);
 
-    await review.distilBoundaryNotes(noted.id);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      problem: { id: grind.id },
-      review: { verdict: "confirm", note: "Grind memory, not grinder care." },
+    const marks = Object.fromEntries(review.listReviewed().map((d) => [d.request.title, d.regressionCase]));
+    expect(marks).toEqual({ Moved: true, Split: true, Unmarked: false, Confirmed: false });
+    expect(db.select().from(matchingDecisions).where(eq(matchingDecisions.id, moved.id)).get()).toMatchObject({
+      regressionCase: true,
     });
-    expect(noteOf(db, grind.id)).toBe("Includes what fits Dial in grind size.");
   });
+});
 
-  it("skips a source deleted by the review and distils only the destination", async () => {
-    const { calls, writer } = recordingWriter();
-    const { alex, sam, flavour, grind, review, place } = setupReview(writer);
-    const decision = await place(alex.id, grind.id);
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+describe("Matching examples", () => {
+  it("keep every correction, but a Confirm only when it was escalated for an ambiguity reason", async () => {
+    const { db, alex, sam, flavour, grind, review, place } = setupReview();
+    const given: [string, EscalationReason[], "confirm" | "move"][] = [
+      ["moved, auto-accepted", [], "move"],
+      ["confirmed, auto-accepted", [], "confirm"],
+      ["confirmed, spot check", ["spot_check"], "confirm"],
+      ["confirmed, high-Demand", ["high_demand_merge"], "confirm"],
+      ["confirmed, bypassed", ["bypassed"], "confirm"],
+      ["confirmed, mine is different", ["mine_is_different"], "confirm"],
+      ["confirmed, low confidence", ["high_demand_merge", "low_confidence"], "confirm"],
+      ["confirmed, near miss", ["near_miss"], "confirm"],
+    ];
+    await place(alex.id, grind.id, "keeps grind alive");
+    for (const [title, reasons, verdict] of given) {
+      const d = await place(alex.id, grind.id, title);
+      escalate(db, d.id, reasons);
+      review.review(
+        d.id,
+        verdict,
+        verdict === "move" ? { targetProblemId: flavour.id, note: NOTE } : {},
+        sam.id,
+      );
+    }
 
-    await review.distilBoundaryNotes(decision.id);
-
-    expect(calls.map((c) => c.problem.id)).toEqual([flavour.id]);
-    expect(calls[0].review).toMatchObject({ fromProblem: null, toProblem: { title: flavour.title } });
-  });
-
-  it("a failed call keeps that Problem's existing note, still revises the others, and keeps the review", async () => {
-    const writer: BoundaryNoteWriter = async ({ problem }) => {
-      if (problem.title === "Dial in grind size") throw new Error("AI down");
-      return "Includes flavour.";
-    };
-    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview(writer);
-    db.update(problems).set({ boundaryNote: "Includes grind settings." }).where(eq(problems.id, grind.id)).run();
-    const decision = await place(alex.id, grind.id);
-    await place(priya.id, grind.id, "Grind notes");
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    await expect(review.distilBoundaryNotes(decision.id)).resolves.toBeUndefined();
-
-    errors.mockRestore();
-    expect(noteOf(db, grind.id)).toBe("Includes grind settings.");
-    expect(noteOf(db, flavour.id)).toBe("Includes flavour.");
-    expect(review.listReviewed()[0].review).toMatchObject({ verdict: "move" });
+    expect(new Set(listMatchingExamples(db).map((e) => e.request.title))).toEqual(
+      new Set([
+        "moved, auto-accepted",
+        "confirmed, mine is different",
+        "confirmed, low confidence",
+        "confirmed, near miss",
+      ]),
+    );
   });
 });

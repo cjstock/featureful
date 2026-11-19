@@ -6,6 +6,11 @@ import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { getProblem, listEvidence } from "@/lib/problems";
 import { STATUS_LABELS } from "@/lib/statuses";
 import { getBrief } from "@/lib/brief-writer";
+import { latestEvaluationCall } from "@/lib/ai-calls";
+import { disabledReason } from "@/lib/ai-controls";
+import { evaluationFreshness } from "@/lib/evaluation-freshness";
+import { FreshnessNotice } from "@/components/evaluation-freshness";
+import { AiCallLine } from "@/components/ai-call-line";
 import { Badge } from "@/components/ui/badge";
 import { roleTone } from "@/lib/tones";
 import {
@@ -16,7 +21,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BoundaryNoteEditor } from "@/components/boundary-note-editor";
 import { DecisionBrief } from "@/components/decision-brief";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 import { ScoreBreakdown } from "@/components/score-breakdown";
@@ -40,6 +44,10 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
   // Customers only ever see their own Requests; never other Customers' words, scores or briefs.
   const evidence = listEvidence(db, id, internal ? undefined : person.id);
   const supportedByMe = supporters.some((s) => s.id === person.id);
+  // PMs see which AI call produced the current evaluation.
+  const evaluationCall = isPm(person) ? latestEvaluationCall(db, id) : null;
+  // Internal stakeholders see when the scores are stale or the latest evaluation failed.
+  const freshness = internal ? evaluationFreshness(db, id) : null;
 
   return (
     <div className="space-y-6">
@@ -70,30 +78,16 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
           <CardContent className="space-y-3">
             {problem.decisionNote && <p className="whitespace-pre-wrap text-sm">{problem.decisionNote}</p>}
             {isPm(person) && (
-              <StatusChangeForm problemId={problem.id} status={problem.status} note={problem.decisionNote} />
+              <StatusChangeForm
+                problemId={problem.id}
+                status={problem.status}
+                note={problem.decisionNote}
+                draftDisabledReason={disabledReason(db, "decision_note")}
+              />
             )}
           </CardContent>
         )}
       </Card>
-
-      {internal && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Boundary note</CardTitle>
-            <CardDescription>
-              {problem.boundaryNote
-                ? "What this Problem does and does not cover. The Matcher reads it; Customers don't see it."
-                : "No Boundary note yet. Match reviews are distilled into one here."}
-            </CardDescription>
-          </CardHeader>
-          {(problem.boundaryNote || isPm(person)) && (
-            <CardContent className="space-y-3">
-              {problem.boundaryNote && <p className="whitespace-pre-wrap text-sm">{problem.boundaryNote}</p>}
-              {isPm(person) && <BoundaryNoteEditor problemId={problem.id} note={problem.boundaryNote} />}
-            </CardContent>
-          )}
-        </Card>
-      )}
 
       {internal && (
         <Card>
@@ -105,22 +99,35 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
             </CardDescription>
             {isPm(person) && (
               <CardAction>
-                <ReevaluateButton problemId={problem.id} />
+                <ReevaluateButton problemId={problem.id} disabledReason={disabledReason(db, "evaluator")} />
               </CardAction>
             )}
           </CardHeader>
           <CardContent>
+            {freshness && <FreshnessNotice freshness={freshness} canReevaluate={isPm(person)} className="mb-4" />}
             <ScoreBreakdown
               problem={problem}
               priority={priority}
               supporterCount={supporters.length}
               canOverride={isPm(person)}
             />
+            {evaluationCall && (
+              <div className="mt-4">
+                <AiCallLine aiCall={evaluationCall} />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
 
-      {internal && <DecisionBrief problemId={problem.id} brief={getBrief(db, problem.id)} viewer={person} />}
+      {internal && (
+        <DecisionBrief
+          problemId={problem.id}
+          brief={getBrief(db, problem.id)}
+          viewer={person}
+          disabledReason={isPm(person) ? disabledReason(db, "brief") : null}
+        />
+      )}
 
       <Card>
         <CardHeader>

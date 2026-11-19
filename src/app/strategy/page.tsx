@@ -1,9 +1,11 @@
 import { notFound } from "next/navigation";
 import { getDb } from "@/db/client";
 import { getCurrentPerson } from "@/lib/identity";
+import { budgetStatus, disabledReason, listAiControls, type BudgetStatus } from "@/lib/ai-controls";
 import { getProductStrategy } from "@/lib/product-strategy";
 import { isInternalStakeholder, isPm } from "@/lib/roles";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AiControlsCard } from "@/components/ai-controls-card";
 import { ProductStrategyForm } from "@/components/product-strategy-form";
 import { ReevaluateButton } from "@/components/reevaluate-button";
 
@@ -11,12 +13,22 @@ const dateTimeFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium", time
 
 export const metadata = { title: "Product Strategy · Featureful" };
 
-/** PMs edit the Product Strategy; Support agents may read it; Customers don't see it. */
+/**
+ * PMs edit the Product Strategy and flip the AI controls; Support agents may read both; Customers
+ * don't see this page.
+ */
 export default async function StrategyPage() {
   const person = await getCurrentPerson();
   if (!isInternalStakeholder(person)) notFound();
   const pm = isPm(person);
-  const strategy = getProductStrategy(getDb());
+  const db = getDb();
+  const strategy = getProductStrategy(db);
+  let budget: BudgetStatus | null = null;
+  try {
+    budget = budgetStatus(db, new Date());
+  } catch (error) {
+    console.error("Couldn't read the AI budget", error);
+  }
 
   return (
     <div className="space-y-6">
@@ -58,10 +70,12 @@ export default async function StrategyPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ReevaluateButton variant="default" />
+            <ReevaluateButton variant="default" disabledReason={disabledReason(db, "evaluator")} />
           </CardContent>
         </Card>
       )}
+
+      <AiControlsCard controls={listAiControls(db)} budget={budget} canEdit={pm} />
     </div>
   );
 }

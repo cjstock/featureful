@@ -5,10 +5,12 @@ import { after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { idSchema, message, type Result } from "@/lib/action-result";
+import { appCaller } from "@/lib/ai";
 import { getCurrentPerson } from "@/lib/identity";
-import { createIntake, type Confirmation, type Proposal } from "@/lib/intake";
-import { llmMatcher } from "@/lib/intake/llm-matcher";
+import { createIntake, type Proposal } from "@/lib/intake";
+import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { tryEvaluateProblem } from "@/lib/evaluator";
+import { checkProposeRateLimit, checkSubmitRateLimit } from "@/lib/rate-limit";
 
 const draftSchema = z.object({
   title: z.string().trim().min(1, "Give your Request a title").max(200),
@@ -25,34 +27,37 @@ const decisionSchema = z.union([
   }),
 ]);
 
-/** The proposal from step 1, echoed back by the client so the Matching decision can be recorded. */
-const proposalSchema = z.object({
-  match: z
-    .object({
-      problemId: idSchema,
-      problemTitle: z.string(),
-      confidence: z.number().min(0).max(1),
-      reason: z.string().max(2000),
-    })
-    .nullable(),
-  newProblem: z.object({
-    title: z.string().trim().min(1).max(200),
-    need: z.string().trim().min(1).max(2000),
-  }),
-});
+/**
+ * The proposal from step 1, echoed back by the client. Only its AI call id is read, as a claim:
+ * the match, confidence, closest Problem and Matcher outcome are derived on the server from that
+ * AI call record (`Intake.confirmFromClient`), so a tampered proposal can't dodge Escalation.
+ */
+const proposalClaimSchema = z.object({ aiCallId: idSchema.nullable().optional() });
 
 export type RequestDraftInput = z.input<typeof draftSchema>;
 export type DecisionInput = z.input<typeof decisionSchema>;
 
-/** Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent. */
-function onEvidenceAdded({ problemId }: Confirmation) {
-  // Pages are dynamic and read the db per request, so the next visit shows the new scores.
-  after(() => tryEvaluateProblem(getDb(), problemId));
+/** Intake for the current person, whose AI calls (Matcher, then Evaluator) are recorded as theirs. */
+function intake(personId: number) {
+  const db = getDb();
+  const caller = appCaller(personId);
+  return createIntake({
+    db,
+    matcher: createLlmMatcher(db, caller),
+    // A failed Matcher never blocks a submitter: they save a new Problem, escalated as Bypassed.
+    onMatcherFailure: "bypass",
+    // Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent.
+    // Pages are dynamic and read the db per request, so the next visit shows the new scores.
+    onEvidenceAdded: ({ problemId }) => after(() => tryEvaluateProblem(db, problemId, caller)),
+  });
 }
 
-function intake() {
-  return createIntake({ db: getDb(), matcher: llmMatcher, onEvidenceAdded });
-}
+/**
+ * Proposals still waiting on the Matcher, per person: counted against the propose rate limit,
+ * since their AI calls are recorded only when they finish. Per process, like the budget's
+ * in-flight reservation.
+ */
+const pendingProposals = new Map<number, number>();
 
 /** Step 1: ask the AI to match the Request. Saves nothing. */
 export async function proposeRequest(
@@ -60,9 +65,24 @@ export async function proposeRequest(
 ): Promise<Result<{ proposal: Proposal }>> {
   try {
     // Every role (Customer, Support agent, PM) may submit Requests.
-    await getCurrentPerson();
+    const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    return { ok: true, proposal: await intake().propose(draft) };
+    // Both limits are checked before the Matcher runs, so a person over either spends no AI call.
+    // The submit limit is checked here too, so nobody is matched only to be refused at save.
+    const now = new Date();
+    const pending = pendingProposals.get(person.id) ?? 0;
+    const limit = checkSubmitRateLimit(getDb(), person.id, now);
+    if (!limit.ok) return { ok: false, error: limit.message };
+    const proposeLimit = checkProposeRateLimit(getDb(), person.id, now, pending);
+    if (!proposeLimit.ok) return { ok: false, error: proposeLimit.message };
+    pendingProposals.set(person.id, pending + 1);
+    try {
+      return { ok: true, proposal: await intake(person.id).propose(draft) };
+    } finally {
+      const left = (pendingProposals.get(person.id) ?? 1) - 1;
+      if (left > 0) pendingProposals.set(person.id, left);
+      else pendingProposals.delete(person.id);
+    }
   } catch (error) {
     console.error("proposeRequest failed", error);
     return { ok: false, error: message(error) };
@@ -78,9 +98,12 @@ export async function confirmRequest(
   try {
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    const { problemId } = intake().confirm(
+    // The rate limit itself: this check and the save below run with no await between them.
+    const limit = checkSubmitRateLimit(getDb(), person.id, new Date());
+    if (!limit.ok) return { ok: false, error: limit.message };
+    const { problemId } = intake(person.id).confirmFromClient(
       draft,
-      proposalSchema.parse(proposal),
+      proposalClaimSchema.parse(proposal),
       decisionSchema.parse(decision),
       person.id,
     );

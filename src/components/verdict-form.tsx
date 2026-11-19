@@ -1,10 +1,9 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useId, useState } from "react";
 import { Loader2 } from "lucide-react";
-import { reviewMatch, type MatchReviewInput } from "@/app/actions/match-review";
-import type { Verdict } from "@/db/schema";
+import type { MatchReviewInput } from "@/app/actions/match-review";
+import { DIFFERENT_NEEDS_QUESTION } from "@/lib/escalation-labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,40 +14,45 @@ type ProblemOption = { id: number; title: string };
 const listClass =
   "w-full rounded-lg border border-input bg-transparent p-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-/** PM only: Confirm, Move, or Split a Matching decision, with an optional note. */
-export function MatchReviewControls({
-  decisionId,
+/**
+ * The inline form for a Move or Split: the target (an existing Problem, or the new one), the
+ * required note, and "Add as Regression case", ticked by default. Mount it with a `key` per
+ * decision and verdict so it starts fresh.
+ */
+export function VerdictForm({
+  verdict,
+  submitLabel,
   currentProblemId,
+  moveTarget,
   problems,
   newProblem,
+  saving,
+  error,
+  onSubmit,
+  onCancel,
 }: {
-  decisionId: number;
+  verdict: "move" | "split";
+  submitLabel: string;
   currentProblemId: number;
-  /** Every Problem, for the Move target select. */
+  /** The Problem a Move starts on, if any. */
+  moveTarget: number | null;
+  /** Every Problem, for the Move target. */
   problems: ProblemOption[];
   /** The Matcher's new-Problem statement, pre-filled for Split. */
   newProblem: { title: string; need: string };
+  saving: boolean;
+  error: string | null;
+  onSubmit: (input: MatchReviewInput) => void;
+  onCancel: () => void;
 }) {
-  const router = useRouter();
   const id = useId();
-  const [mode, setMode] = useState<Verdict | null>(null);
   const [note, setNote] = useState("");
+  const [regressionCase, setRegressionCase] = useState(true);
   const [search, setSearch] = useState("");
-  const [target, setTarget] = useState<number | null>(null);
+  const [target, setTarget] = useState<number | null>(moveTarget);
   const [title, setTitle] = useState(newProblem.title);
   const [need, setNeed] = useState(newProblem.need);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, startSave] = useTransition();
-
-  const open = (verdict: Verdict) => {
-    setMode(verdict);
-    setNote("");
-    setSearch("");
-    setTarget(null);
-    setTitle(newProblem.title);
-    setNeed(newProblem.need);
-    setError(null);
-  };
+  const [invalid, setInvalid] = useState<string | null>(null);
 
   const candidates = problems.filter(
     (p) => p.id !== currentProblemId && p.title.toLowerCase().includes(search.trim().toLowerCase()),
@@ -56,48 +60,20 @@ export function MatchReviewControls({
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!mode) return;
-    let input: MatchReviewInput;
-    if (mode === "move") {
-      if (target === null) return setError("Choose a Problem to move the Request to");
-      input = { verdict: "move", targetProblemId: target, note };
-    } else if (mode === "split") {
-      input = { verdict: "split", newProblem: { title, need }, note };
-    } else {
-      input = { verdict: "confirm", note };
+    if (!note.trim()) return setInvalid(`${DIFFERENT_NEEDS_QUESTION} A note is required.`);
+    if (verdict === "move") {
+      if (target === null) return setInvalid("Choose a Problem to move the Request to");
+      setInvalid(null);
+      return onSubmit({ verdict: "move", targetProblemId: target, note, regressionCase });
     }
-    startSave(async () => {
-      setError(null);
-      const result = await reviewMatch(decisionId, input);
-      if (!result.ok) return setError(result.error);
-      setMode(null);
-      router.refresh();
-    });
+    setInvalid(null);
+    onSubmit({ verdict: "split", newProblem: { title, need }, note, regressionCase });
   };
 
-  if (!mode) {
-    return (
-      <div className="flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => open("confirm")}>
-          Confirm
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => open("move")}>
-          Move
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => open("split")}>
-          Split
-        </Button>
-      </div>
-    );
-  }
-
+  const shown = invalid ?? error;
   return (
-    <form onSubmit={submit} className="space-y-3 rounded-md border p-3">
-      {mode === "confirm" && (
-        <p className="text-muted-foreground">Confirm that the Request is on the right Problem.</p>
-      )}
-
-      {mode === "move" && (
+    <form onSubmit={submit} className="space-y-3 rounded-md border p-3 text-sm">
+      {verdict === "move" ? (
         <div className="space-y-1.5">
           <Label htmlFor={`${id}-search`}>Move the Request to</Label>
           <Input
@@ -122,13 +98,9 @@ export function MatchReviewControls({
               </option>
             ))}
           </select>
-          {candidates.length === 0 && (
-            <p className="text-xs text-muted-foreground">No other Problem matches.</p>
-          )}
+          {candidates.length === 0 && <p className="text-xs text-muted-foreground">No other Problem matches.</p>}
         </div>
-      )}
-
-      {mode === "split" && (
+      ) : (
         <>
           <div className="space-y-1.5">
             <Label htmlFor={`${id}-title`}>New Problem title</Label>
@@ -157,35 +129,45 @@ export function MatchReviewControls({
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor={`${id}-note`}>Note (optional, internal; the Matcher learns from it)</Label>
+        <Label htmlFor={`${id}-note`}>{DIFFERENT_NEEDS_QUESTION} (required, internal; the Matcher learns from it)</Label>
         <Textarea
           id={`${id}-note`}
+          autoFocus
           maxLength={2000}
           rows={2}
+          required
           value={note}
           onChange={(e) => setNote(e.target.value)}
           disabled={saving}
-          placeholder="Why is this the right grouping?"
         />
       </div>
 
-      {mode !== "confirm" && (
-        <p className="text-xs text-muted-foreground">
-          The submitter&apos;s Support follows the Request. A Problem left with no Evidence is
-          deleted, and both Problems are re-evaluated.
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          checked={regressionCase}
+          onChange={(e) => setRegressionCase(e.target.checked)}
+          disabled={saving}
+          className="size-4 accent-primary"
+        />
+        Add as Regression case
+      </label>
+
+      <p className="text-xs text-muted-foreground">
+        The submitter&apos;s Support follows the Request. A Problem left with no Evidence is deleted, and
+        both Problems are re-evaluated.
+      </p>
+      {shown && (
+        <p role="alert" className="text-destructive">
+          {shown}
         </p>
       )}
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={saving}>
           {saving && <Loader2 className="animate-spin" />}
-          {mode === "confirm" ? "Confirm" : mode === "move" ? "Move Request" : "Split into new Problem"}
+          {submitLabel}
         </Button>
-        <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={() => setMode(null)}>
+        <Button type="button" variant="ghost" size="sm" disabled={saving} onClick={onCancel}>
           Cancel
         </Button>
       </div>

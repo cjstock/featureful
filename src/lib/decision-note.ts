@@ -1,9 +1,9 @@
-import { eq } from "drizzle-orm";
-import { generateText, Output } from "ai";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { problems, STATUSES, type Status } from "@/db/schema";
-import { model } from "@/lib/ai";
+import { aiGenerate, type AiCaller } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 import { getBrief } from "@/lib/brief-writer";
 import { formatEvidence, type PromptEvidence } from "@/lib/evidence-prompt";
 import { getProblem, listEvidence } from "@/lib/problems";
@@ -26,12 +26,23 @@ export const statusChangeSchema = z.object({
 
 export type StatusChange = z.infer<typeof statusChangeSchema>;
 
-/** Saves Status and Decision note together. Returns false if no such Problem. */
-export function changeStatus(db: Db, problemId: number, input: StatusChange): boolean {
+/**
+ * Saves Status and Decision note together. The first time the Problem leaves Open, records when
+ * (`firstDecidedAt`, never overwritten). Returns false if no such Problem.
+ */
+export function changeStatus(db: Db, problemId: number, input: StatusChange, now = new Date()): boolean {
   const { status, note } = statusChangeSchema.parse(input);
   const result = db
     .update(problems)
-    .set({ status, decisionNote: note })
+    .set({
+      status,
+      decisionNote: note,
+      // Only when it's leaving Open: a Problem already decided before this field existed keeps
+      // an unknown (null) time rather than a wrong one. SET reads the row's old values.
+      ...(status !== "open" && {
+        firstDecidedAt: sql`case when ${problems.status} = 'open' then coalesce(${problems.firstDecidedAt}, ${now.getTime()}) else ${problems.firstDecidedAt} end`,
+      }),
+    })
     .where(eq(problems.id, problemId))
     .run();
   return result.changes > 0;
@@ -61,11 +72,22 @@ const noteSchema = z.object({
   note: z.string().describe("The Decision note text only: 2–4 short sentences"),
 });
 
-/** One structured-output LLM call returning a draft Decision note. Writes nothing. Works without a brief. */
-export async function runNoteDrafter(input: NoteDrafterInput): Promise<string> {
+/**
+ * One structured-output AI call about Problem `problemId` (recorded in `db`) returning a draft
+ * Decision note. Writes nothing else. Works without a brief.
+ */
+export async function runNoteDrafter(
+  db: Db,
+  caller: AiCaller,
+  problemId: number,
+  input: NoteDrafterInput,
+): Promise<string> {
   const { problem, targetStatus, brief, evidence } = input;
-  const { output } = await generateText({
-    model,
+  const { output } = await aiGenerate({
+    ...caller,
+    db,
+    module: "decision_note",
+    related: { type: "problem", id: problemId },
     system: SYSTEM,
     prompt: [
       `Problem: ${problem.title}`,
@@ -80,7 +102,8 @@ export async function runNoteDrafter(input: NoteDrafterInput): Promise<string> {
     ]
       .filter((line) => line !== null)
       .join("\n"),
-    output: Output.object({ schema: noteSchema }),
+    schema: noteSchema,
+    maxOutputTokens: AI_MAX_OUTPUT_TOKENS.decision_note,
   });
   const note = output.note.trim();
   if (!note) throw new Error("The Decision note drafter returned an empty note");
@@ -88,14 +111,19 @@ export async function runNoteDrafter(input: NoteDrafterInput): Promise<string> {
 }
 
 /** Drafts a Decision note for moving a Problem to `targetStatus`. One AI call; writes nothing. */
-export async function draftDecisionNote(db: Db, problemId: number, targetStatus: Status): Promise<string> {
+export async function draftDecisionNote(
+  db: Db,
+  problemId: number,
+  targetStatus: Status,
+  caller: AiCaller,
+): Promise<string> {
   const detail = getProblem(db, problemId);
   if (!detail) throw new Error(`Problem ${problemId} not found`);
   const evidence = listEvidence(db, problemId).map(({ request }) => ({
     title: request.title,
     description: request.description,
   }));
-  return runNoteDrafter({
+  return runNoteDrafter(db, caller, problemId, {
     problem: detail.problem,
     targetStatus,
     brief: getBrief(db, problemId)?.markdown ?? null,

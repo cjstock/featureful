@@ -1,5 +1,6 @@
 import type { Problem } from "@/db/schema";
-import { CRITERION_LABELS, type CriterionKey, type PriorityScore } from "@/lib/scoring";
+import { CRITERION_LABELS, isAiEstimate, type CriterionKey, type PriorityScore } from "@/lib/scoring";
+import { AiEstimateTag } from "@/components/ai-estimate-tag";
 import { CriterionMeter } from "@/components/criterion-meter";
 import { NotEvaluatedBadge, OverrideBadge, ScoreChip } from "@/components/score-chip";
 import { ScoreOverrideForm } from "@/components/score-override-form";
@@ -102,7 +103,10 @@ export function ScoreBreakdown({
             {priority.breakdown.map((c) => (
               <tr key={c.criterion} className="border-t align-top">
                 <td className="py-2 pr-3">
-                  <div className="font-medium">{CRITERION_LABELS[c.criterion]}</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium">{CRITERION_LABELS[c.criterion]}</span>
+                    {isAiEstimate(c.criterion) && <AiEstimateTag />}
+                  </div>
                   {INVERTED_NOTE[c.criterion] && (
                     <div className="text-xs text-muted-foreground">{INVERTED_NOTE[c.criterion]}</div>
                   )}

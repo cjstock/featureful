@@ -37,16 +37,36 @@ The record of what the Matcher proposed for a Request (a match with confidence a
 _Avoid_: Match result, suggestion
 
 **Match review**:
-A PM's verdict on a Matching decision: Confirm, Move (to another existing Problem), or Split (into a new Problem), with an optional note.
+A PM's verdict on a Matching decision, usually an Escalation: Confirm, Move (to another existing Problem), or Split (into a new Problem); Move and Split need a note saying what makes the needs different.
 _Avoid_: Correction, override, triage
 
+**Escalation**:
+A Matching decision routed to a PM for Match review, with its Escalation reasons.
+_Avoid_: Flag, alert, triage
+
+**Escalation reason**:
+Why a Matching decision needs a PM's look: the Matcher was bypassed, the submitter said theirs is different, a merge into a high-Demand Problem, low confidence, a near miss, or a random spot check.
+_Avoid_: Risk, warning
+
+**Auto-accepted**:
+A Matching decision that wasn't escalated; it stands unless a PM reviews it.
+_Avoid_: Approved, skipped
+
+**Regression case**:
+A reviewed Matching decision kept as a test the Matcher must keep passing.
+_Avoid_: Test case, golden
+
 **Matching example**:
-A reviewed Matching decision that the Matcher learns from when judging new Requests.
+A reviewed Matching decision that the Matcher learns from when judging new Requests: every correction, and a Confirm only when the decision was escalated as ambiguous.
 _Avoid_: Training data, few-shot, feedback
 
-**Boundary note**:
-A short statement on a Problem of what it does and does not cover, distilled from Match reviews, that the Matcher reads alongside the Problem.
-_Avoid_: Scope note, rule, description
+**PM agreement rate**:
+How often a PM's Match review confirms what the Matcher proposed, measured on spot checks so hard cases don't skew it.
+_Avoid_: Accuracy, precision
+
+**Escalation rate**:
+The share of Matching decisions that are escalated for Match review.
+_Avoid_: Error rate
 
 ### Evaluation
 
@@ -91,6 +111,12 @@ _Avoid_: Stage, state
 **Decision note**:
 The PM's explanation, visible to supporters, of why a Problem's Status changed.
 _Avoid_: Update, announcement, changelog
+
+### AI operations
+
+**AI call**:
+One attempt by an AI module (the Matcher, the Evaluator, or a writer) with what it was shown, what it returned, what it cost, and its outcome; refused attempts (over budget, or the module switched off) are AI calls too.
+_Avoid_: Log, trace, run, request
 
 ### People
 

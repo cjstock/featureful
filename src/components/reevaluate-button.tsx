@@ -6,13 +6,18 @@ import { Loader2 } from "lucide-react";
 import { reevaluateAllProblems, reevaluateProblem } from "@/app/actions/evaluation";
 import { Button } from "@/components/ui/button";
 
-/** PM only: re-evaluate one Problem (with `problemId`) or every Problem (without). */
+/**
+ * PM only: re-evaluate one Problem (with `problemId`) or every Problem (without). Disabled, with
+ * `disabledReason` shown, while the Evaluator is switched off or the AI budget is reached.
+ */
 export function ReevaluateButton({
   problemId,
   variant = "outline",
+  disabledReason = null,
 }: {
   problemId?: number;
   variant?: "outline" | "default";
+  disabledReason?: string | null;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -42,10 +47,11 @@ export function ReevaluateButton({
 
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <Button variant={variant} size="sm" disabled={pending} onClick={run}>
+      <Button variant={variant} size="sm" disabled={pending || disabledReason !== null} onClick={run}>
         {pending && <Loader2 className="animate-spin" />}
         {pending ? "Evaluating…" : all ? "Re-evaluate all" : "Re-evaluate"}
       </Button>
+      {disabledReason && !message && <span className="text-sm text-muted-foreground">{disabledReason}</span>}
       {message && (
         <span
           role="status"

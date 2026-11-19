@@ -5,6 +5,7 @@ import { z } from "zod";
 import { getDb } from "@/db/client";
 import { STATUSES, type Status } from "@/db/schema";
 import { idSchema, message, type Result } from "@/lib/action-result";
+import { appCaller } from "@/lib/ai";
 import { requireRole } from "@/lib/identity";
 import { changeStatus, draftDecisionNote, type StatusChange } from "@/lib/decision-note";
 
@@ -32,11 +33,12 @@ export async function draftNote(
   targetStatus: Status,
 ): Promise<Result<{ note: string }>> {
   try {
-    await requireRole("pm");
+    const pm = await requireRole("pm");
     const note = await draftDecisionNote(
       getDb(),
       idSchema.parse(problemId),
       z.enum(STATUSES).parse(targetStatus),
+      appCaller(pm.id),
     );
     return { ok: true, note };
   } catch (error) {

@@ -190,7 +190,11 @@ export function SubmitRequestForm() {
             <CardDescription>
               {proposal.match
                 ? "Got it, yours is different. We'll create a new Problem:"
-                : "No existing Problem matches. We'll create a new Problem:"}
+                : proposal.matcherOutcome === "off" || proposal.matcherOutcome === "budget"
+                  ? "Matching is paused; a PM will group your Request. We'll save it as a new Problem for now:"
+                  : proposal.matcherOutcome && proposal.matcherOutcome !== "ok"
+                    ? "We couldn't check for matching Problems just now. We'll create a new Problem from your Request, and a PM will group it:"
+                    : "No existing Problem matches. We'll create a new Problem:"}
             </CardDescription>
             <CardTitle>{proposal.newProblem.title}</CardTitle>
           </CardHeader>

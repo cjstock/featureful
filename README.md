@@ -81,10 +81,24 @@ or splitting relocates the Request and its Support and re-evaluates the
 affected Problems.
 
 The Matcher learns from these reviews in its prompt (ADR 0002): it sees up to
-20 recent Matching examples, corrections first, and each Problem's Boundary
-note, a short "Includes … Does not include …" statement that the AI distils
-from every Move, Split, or Confirm with a note. Internal stakeholders see the
-Boundary note on the Problem page, and PMs can edit it there.
+20 recent Matching examples, corrections first. (Boundary notes, short
+per-Problem statements distilled from reviews, were cut after an ablation
+showed no gain over the examples alone: ADR 0003.)
+
+## AI calls
+
+Every AI call (the Matcher, the Evaluator and the two writers) goes through
+`aiGenerate` in `src/lib/ai.ts`, the only file allowed to import the AI SDK
+(ESLint enforces it). Each attempt is sent once, without retries, with an
+output cap per module (`AI_MAX_OUTPUT_TOKENS` in `src/lib/config.ts`), and
+recorded in `ai_calls`: module, model, prompt version (a short hash of the
+system prompt), tokens, cost from the price table in config, latency, outcome
+(`ok`, `error`, `parse_failed`, ...), who triggered it, its source (`app`,
+`seed` or `eval`) and the full prompt and output. Matching decisions store the
+prompt version and AI call id. PMs see a line such as
+"Matcher · v3f9a · $0.004 · 1.2s · view prompt" on each Matching decision in
+Match review and on each Problem's evaluation; "view prompt" shows the stored
+prompt and output, to PMs only.
 
 ## Tests and checks
 
@@ -94,3 +108,22 @@ npm run test:watch  # Vitest in watch mode
 npm run typecheck   # tsc --noEmit
 npm run lint        # ESLint
 ```
+
+### Matcher eval
+
+`npm run eval` replays the seed Requests through intake and runs the
+fixed-state cases in `evals/matcher/cases.ts` against the real Matcher, scores
+them, and gates the result against `evals/baseline.json`. It costs money
+(about 40 Matcher calls), so it is never part of `npm test`; it estimates its
+cost first and stops at 60 AI calls or $1 per run. Its Matcher calls go through
+`aiGenerate` with source `eval`, and their AI call records stay in the run's
+in-memory database.
+
+```bash
+npm run eval -- --estimate         # offline cost estimate, no AI calls
+npm run eval                       # live run, gated against the baseline
+npm run eval -- --write-baseline   # live run that rewrites evals/baseline.json
+```
+
+In CI the `eval` job runs it only when AI files change. Change the baseline only
+in a Yellow-or-higher-lane PR.

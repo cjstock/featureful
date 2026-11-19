@@ -1,8 +1,10 @@
-import { generateText, Output } from "ai";
 import { z } from "zod";
-import { model } from "@/lib/ai";
+import type { Db } from "@/db";
+import { aiGenerate, type AiCaller } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
+import { customerTextRule, tagCustomerText } from "@/lib/customer-text";
 import { SUBMITTER_CHOICE_LABELS } from "@/lib/match-review";
-import type { Matcher, MatchingExample } from "./index";
+import type { Matcher, MatcherResult, MatchingExample, RequestDraft } from "./index";
 
 const SYSTEM = `You triage feature Requests for a coffee-tracking app used by home roasters (beans, roasts, brews, recipes).
 
@@ -18,9 +20,11 @@ Your job, for one new Request:
 
 If you match, give your confidence (0 to 1) and a one-line reason a submitter can judge, naming the shared need.
 
+If you don't match, set closestProblem to the existing Problem closest to this Request's need, with your confidence (0 to 1) that it is the same need; null if there are no existing Problems. If you match, set closestProblem to null.
+
 You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.
 
-Some Problems have a Boundary note, written from the PM's reviews, saying what that Problem does and does not cover. Treat it as the PM's ruling: never match a Request to a Problem whose Boundary note excludes its need.`;
+${customerTextRule("request_title", "request_description")}`;
 
 const schema = z.object({
   matchedProblemId: z
@@ -34,6 +38,13 @@ const schema = z.object({
     title: z.string(),
     need: z.string(),
   }),
+  closestProblem: z
+    .object({
+      id: z.number().int().describe("Id of the closest existing Problem"),
+      confidence: z.number().min(0).max(1).describe("Confidence that it is the same need"),
+    })
+    .nullable()
+    .describe("With no match: the closest existing Problem; null when you match or there are none"),
 });
 
 const MAX_DESCRIPTION = 300;
@@ -58,7 +69,7 @@ function formatExample(example: MatchingExample, index: number): string {
         : `Split from ${quote(review.fromProblem?.title)} into its own new Problem ${quote(review.toProblem?.title)}`;
   return [
     `Example ${index + 1}:`,
-    `Request: ${request.title} — ${description}`,
+    `Request: ${tagCustomerText("request_title", request.title)} — ${tagCustomerText("request_description", description)}`,
     `Matcher proposed: ${proposed}`,
     `Submitter: ${SUBMITTER_CHOICE_LABELS[example.submitterChoice]}`,
     `PM verdict: ${verdict}`,
@@ -66,40 +77,71 @@ function formatExample(example: MatchingExample, index: number): string {
   ].join("\n");
 }
 
-/** Production Matcher: one structured-output LLM call over the full Problem list (ADR 0001). */
-export const llmMatcher: Matcher = async (request, problems, examples) => {
-  const list =
-    problems.length === 0
-      ? "(none yet)"
-      : problems
-          .map(
-            (p) =>
-              `- id ${p.id}: ${p.title} — ${p.need}` +
-              (p.boundaryNote ? `\n  Boundary note: ${p.boundaryNote}` : ""),
-          )
-          .join("\n");
+/** The prompt's last section: the Request being matched, its Customer text tagged. */
+const requestSection = (request: RequestDraft) =>
+  `New Request:\n${tagCustomerText("request_title", request.title)}\n${tagCustomerText("request_description", request.description)}`;
 
-  const examplesSection =
-    examples.length === 0
-      ? ""
-      : `Matching examples (corrections first, then most recent):\n\n${examples.map(formatExample).join("\n\n")}\n\n`;
+/** Whether a Matcher prompt (as stored on its AI call) was about this Request. */
+export function isMatcherPromptFor(prompt: string, request: RequestDraft): boolean {
+  return prompt.endsWith(`\n\n${requestSection(request)}`);
+}
 
-  const { output } = await generateText({
-    model,
-    system: SYSTEM,
-    prompt: `${examplesSection}Existing Problems:\n${list}\n\nNew Request:\nTitle: ${request.title}\nDescription: ${request.description}`,
-    output: Output.object({ schema }),
-  });
+/**
+ * Production Matcher: one structured-output AI call over the full Problem list (ADR 0001),
+ * recorded in `db` as an AI call for `caller`.
+ */
+export function createLlmMatcher(db: Db, caller: AiCaller): Matcher {
+  return async (request, problems, examples) => {
+    const list =
+      problems.length === 0
+        ? "(none yet)"
+        : problems.map((p) => `- id ${p.id}: ${p.title} — ${p.need}`).join("\n");
 
+    const examplesSection =
+      examples.length === 0
+        ? ""
+        : `Matching examples (corrections first, then most recent):\n\n${examples.map(formatExample).join("\n\n")}\n\n`;
+
+    const { output, aiCall } = await aiGenerate({
+      ...caller,
+      db,
+      module: "matcher",
+      related: null,
+      system: SYSTEM,
+      prompt: `${examplesSection}Existing Problems:\n${list}\n\n${requestSection(request)}`,
+      schema,
+      maxOutputTokens: AI_MAX_OUTPUT_TOKENS.matcher,
+      shownProblems: problems,
+    });
+
+    return { ...toMatcherResult(output), aiCallId: aiCall.id };
+  };
+}
+
+function toMatcherResult(output: z.infer<typeof schema>): MatcherResult {
   return {
     match:
       output.matchedProblemId === null
         ? null
-        : {
-            problemId: output.matchedProblemId,
-            confidence: output.confidence,
-            reason: output.reason,
-          },
+        : { problemId: output.matchedProblemId, confidence: output.confidence, reason: output.reason },
     newProblem: output.newProblem,
+    closestProblem:
+      output.matchedProblemId === null && output.closestProblem
+        ? { problemId: output.closestProblem.id, confidence: output.closestProblem.confidence }
+        : null,
+    reason: output.reason,
   };
-};
+}
+
+/**
+ * The Matcher's answer as read back from its AI call record's raw output, so the server can
+ * rebuild a proposal without trusting the client. Null if the output doesn't parse.
+ */
+export function matcherResultFromOutput(output: string): MatcherResult | null {
+  try {
+    const parsed = schema.safeParse(JSON.parse(output));
+    return parsed.success ? toMatcherResult(parsed.data) : null;
+  } catch {
+    return null;
+  }
+}

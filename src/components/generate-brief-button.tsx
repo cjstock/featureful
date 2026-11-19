@@ -6,8 +6,19 @@ import { Loader2 } from "lucide-react";
 import { generateDecisionBrief } from "@/app/actions/brief";
 import { Button } from "@/components/ui/button";
 
-/** PM only: generate (or regenerate) the Decision brief for a Problem. */
-export function GenerateBriefButton({ problemId, hasBrief }: { problemId: number; hasBrief: boolean }) {
+/**
+ * PM only: generate (or regenerate) the Decision brief for a Problem. Disabled, with
+ * `disabledReason` shown, while the Brief writer is switched off or the AI budget is reached.
+ */
+export function GenerateBriefButton({
+  problemId,
+  hasBrief,
+  disabledReason = null,
+}: {
+  problemId: number;
+  hasBrief: boolean;
+  disabledReason?: string | null;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -27,7 +38,8 @@ export function GenerateBriefButton({ problemId, hasBrief }: { problemId: number
           {error}
         </span>
       )}
-      <Button variant="outline" size="sm" disabled={pending} onClick={run}>
+      {disabledReason && !error && <span className="text-sm text-muted-foreground">{disabledReason}</span>}
+      <Button variant="outline" size="sm" disabled={pending || disabledReason !== null} onClick={run}>
         {pending && <Loader2 className="animate-spin" />}
         {pending ? "Writing brief…" : hasBrief ? "Regenerate brief" : "Generate brief"}
       </Button>

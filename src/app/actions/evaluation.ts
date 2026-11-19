@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { idSchema, message, type Result } from "@/lib/action-result";
+import { appCaller } from "@/lib/ai";
 import { requireRole } from "@/lib/identity";
 import { evaluateAllProblems, evaluateProblem } from "@/lib/evaluator";
 import { saveProductStrategy } from "@/lib/product-strategy";
@@ -11,8 +12,8 @@ import { saveProductStrategy } from "@/lib/product-strategy";
 /** PM only: re-run the Evaluator on one Problem now. */
 export async function reevaluateProblem(problemId: number): Promise<Result> {
   try {
-    await requireRole("pm");
-    await evaluateProblem(getDb(), idSchema.parse(problemId));
+    const pm = await requireRole("pm");
+    await evaluateProblem(getDb(), idSchema.parse(problemId), appCaller(pm.id));
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {
@@ -24,8 +25,8 @@ export async function reevaluateProblem(problemId: number): Promise<Result> {
 /** PM only: re-run the Evaluator on every Problem (e.g. after editing the Product Strategy). */
 export async function reevaluateAllProblems(): Promise<Result<{ total: number; failed: number }>> {
   try {
-    await requireRole("pm");
-    const result = await evaluateAllProblems(getDb());
+    const pm = await requireRole("pm");
+    const result = await evaluateAllProblems(getDb(), appCaller(pm.id));
     revalidatePath("/", "layout");
     return { ok: true, ...result };
   } catch (error) {

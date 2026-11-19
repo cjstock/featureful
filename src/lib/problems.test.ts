@@ -196,10 +196,10 @@ describe("listProblems: Problems I've asked about", () => {
     const draft = { title: "Roast notes", description: "Let me note how roasts differ." };
     const proposal = await intake.propose(draft);
     intake.confirm(draft, proposal, { attachTo: grinder.id }, alex.id);
-    const review = createMatchReview({ db, boundaryNoteWriter: async () => "" });
+    const review = createMatchReview({ db });
     const [decision] = review.listQueue();
 
-    review.review(decision.id, "move", { targetProblemId: roasts.id }, sam.id);
+    review.review(decision.id, "move", { targetProblemId: roasts.id, note: "Different need." }, sam.id);
 
     const counts = Object.fromEntries(
       listProblems(db, { viewerId: alex.id, viewerIsCustomer: true }).map((i) => [

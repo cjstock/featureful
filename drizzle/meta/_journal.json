@@ -15,6 +15,41 @@
       "when": 1794544438870,
       "tag": "0001_match_review",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1795067577389,
+      "tag": "0002_ai_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1795110876436,
+      "tag": "0003_drop_boundary_note",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1795113029552,
+      "tag": "0004_escalation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1795114263223,
+      "tag": "0005_ai_controls",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1795118718153,
+      "tag": "0006_problem_first_decided_at",
+      "breakpoints": true
     }
   ]
 }

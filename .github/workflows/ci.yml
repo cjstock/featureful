@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [v2, main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+
+  # Matcher eval (build ticket 02). Always runs so branch protection can require
+  # it; the steps after the path filter only run when AI files changed, so a PR
+  # that touches no AI file passes without spending anything.
+  eval:
+    name: eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # A new push cancels the PR's running eval, so superseded runs stop spending.
+    concurrency:
+      group: eval-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ai:
+              - 'src/lib/ai.ts'
+              - 'src/lib/config.ts'
+              - 'src/lib/intake/**'
+              - 'src/lib/evaluator.ts'
+              - 'src/lib/match-review.ts'
+              - 'src/lib/customer-text.ts'
+              - 'src/lib/evidence-prompt.ts'
+              - 'src/lib/product-strategy.ts'
+              - 'src/db/schema.ts'
+              - 'evals/**'
+              - 'scripts/eval.ts'
+              - 'scripts/seed-data.ts'
+              - 'package-lock.json'
+              - '.github/workflows/ci.yml'
+      - name: No AI files changed
+        if: steps.filter.outputs.ai != 'true'
+        run: echo "No AI files changed; the Matcher eval is skipped." | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Require the Anthropic API key
+        if: steps.filter.outputs.ai == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::AI files changed but the ANTHROPIC_API_KEY secret is missing (PRs from forks get no secrets). The Matcher eval can't run, so this check fails."
+            exit 1
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.filter.outputs.ai == 'true'
+        with:
+          node-version: 26
+          cache: npm
+      - if: steps.filter.outputs.ai == 'true'
+        run: npm ci
+      - name: Matcher eval
+        if: steps.filter.outputs.ai == 'true'
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EVAL_COMMIT: ${{ github.event.pull_request.head.sha }}
+        run: npm run eval
