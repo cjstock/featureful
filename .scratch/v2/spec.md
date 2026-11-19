@@ -60,7 +60,7 @@ v2 keeps every v1 feature and adds the system around the model:
 - **Seam** ([trace ticket](issues/02-trace-budget-off-switch.md)): `aiGenerate({ module, related, system, prompt, schema, maxOutputTokens })` in `src/lib/ai.ts` is the only place that imports `ai`, enforced by ESLint `no-restricted-imports`.
   - **No retries:** `maxRetries: 0`.
   - **Output caps:** set per module in config (Matcher 1,000, Evaluator 1,500, Boundary note 400, Decision note 800, Brief 2,500).
-  - **Worst-case check before each call:** (prompt chars ÷ 4 × input price) + (cap × output price), against the remaining budget.
+  - **Worst-case check before each call:** (prompt chars ÷ 3 × the dearer of the input and cache-write prices) + (cap × output price), against the remaining budget. (Tightened from ÷ 4 × input price in the ticket 07 review; text with fewer characters per token, e.g. CJK, can still exceed it, so the budget can overshoot by at most one call's estimation error.)
   - **Prices** come from a table in config: sonnet-5-5 $2/$10 per MTok, haiku-5-5 $0.10/$0.50 ([research](issues/01-ai-call-seam-facts.md)).
 - **AI call record** (`ai_calls`): one row per attempt with module, model, prompt version (a short hash of the system prompt), tokens (no-cache, cache read, cache write, output), cost, latency, outcome (`ok | error | parse_failed | refused_budget | refused_off`), error message, the related record, the person who triggered it, source (`app | seed | eval`), the full rendered prompt and output, and the **structured Problems shown** to the Matcher.
   - Matching decisions store the prompt version and the AI call id.

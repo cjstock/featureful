@@ -4,13 +4,15 @@
  * `failedAiCall` identifies. Offline model only; no network calls.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, type Db } from "@/db";
 import { aiCalls, aiModuleFlips, people, CALLABLE_AI_MODULES, type CallableAiModule } from "@/db/schema";
-import { aiGenerate, AiRefusal, failedAiCall, offlineModel, type AiModel } from "@/lib/ai";
+import { aiGenerate, AiRefusal, failedAiCall, offlineModel, type AiMeter, type AiModel } from "@/lib/ai";
 import {
   budgetReachedLabel,
   budgetStatus,
+  disabledReason,
   listAiControls,
   moduleUnavailable,
   setModuleOn,
@@ -21,16 +23,18 @@ import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 const schema = z.object({ answer: z.string() });
 /**
  * A model that never calls the network (the seam's offline model), counting the AI calls it is
- * sent. With `gate`, each answer waits for it.
+ * sent. With `gate`, each answer waits for it; `text` is its answer; with `fail`, it throws that
+ * instead of answering.
  */
 type OfflineModel = Extract<AiModel, { specificationVersion: "v4" }>;
-function countingModel(gate?: Promise<void>) {
-  const model = offlineModel('{"answer":"yes"}') as OfflineModel;
+function countingModel(gate?: Promise<void>, { text = '{"answer":"yes"}', fail }: { text?: string; fail?: Error } = {}) {
+  const model = offlineModel(text) as OfflineModel;
   const answer = model.doGenerate.bind(model);
   const calls: unknown[] = [];
   const doGenerate: OfflineModel["doGenerate"] = async (options) => {
     calls.push(options);
     await gate;
+    if (fail) throw fail;
     return answer(options);
   };
   return Object.assign(model, { calls, doGenerate });
@@ -46,6 +50,8 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllEnvs());
 
 const NOON = new Date("2026-11-19T12:00:00.000Z");
+/** Eval calls must bring a per-run meter; these need no cap. */
+const unmetered: AiMeter = { beforeCall() {}, afterCall() {} };
 
 /** An earlier app AI call that cost `costUsd`, at `time`. */
 function spent(costUsd: number, time: Date, source: "app" | "seed" | "eval" = "app") {
@@ -120,7 +126,7 @@ describe("the daily app budget", () => {
   it("doesn't budget seed or eval calls themselves", async () => {
     vi.stubEnv("AI_DAILY_BUDGET_USD", "0");
     const model = answering();
-    await aiGenerate({ db, module: "matcher", related: null, person: null, source: "eval", system: "System.", prompt: "Prompt.", schema, maxOutputTokens: 1_000, model, clock: () => NOON });
+    await aiGenerate({ db, module: "matcher", related: null, person: null, source: "eval", meter: unmetered, system: "System.", prompt: "Prompt.", schema, maxOutputTokens: 1_000, model, clock: () => NOON });
     expect(rows()[0].outcome).toBe("ok");
   });
 
@@ -147,6 +153,18 @@ describe("the daily app budget", () => {
     );
     release();
     expect(await Promise.all(results)).toEqual(["ok", "ok", "budget"]);
+  });
+
+  it.each([
+    ["a model error", { fail: new Error("Anthropic API is down") }, "error"],
+    ["a parse failure", { text: '{"wrong":1}' }, "parse_failed"],
+  ] as const)("gives a call's reservation back after %s", async (_, failure, outcome) => {
+    vi.stubEnv("AI_DAILY_BUDGET_USD", "0.02");
+    // The Evaluator's worst case is a little over $0.015: one fits in $0.02, two don't.
+    await expect(call("evaluator", countingModel(undefined, failure))).rejects.toThrow();
+    // Had the failed call kept its reservation, this one wouldn't fit.
+    await expect(call("evaluator")).resolves.toBeTruthy();
+    expect(rows().map((r) => r.outcome)).toEqual([outcome, "ok"]);
   });
 
   it("reports today's spend, what's left and when the budget was first reached", async () => {
@@ -187,7 +205,7 @@ describe("the off switch", () => {
 
   it("applies to the app only: an eval run ignores it", async () => {
     setModuleOn(db, "matcher", false, pmId);
-    await aiGenerate({ db, module: "matcher", related: null, person: null, source: "eval", system: "System.", prompt: "Prompt.", schema, maxOutputTokens: 1_000, model: answering() });
+    await aiGenerate({ db, module: "matcher", related: null, person: null, source: "eval", meter: unmetered, system: "System.", prompt: "Prompt.", schema, maxOutputTokens: 1_000, model: answering() });
     expect(rows()[0].outcome).toBe("ok");
   });
 
@@ -223,15 +241,51 @@ describe("moduleUnavailable (why a writer button is disabled)", () => {
     expect(moduleUnavailable(db, "brief", NOON)).toBeNull();
   });
 
-  it("says the budget is reached once a call has been refused for budget today, or a full answer can't fit", async () => {
+  it("is per module: a refused Brief doesn't disable a cheaper Decision note draft that still fits", async () => {
     vi.stubEnv("AI_DAILY_BUDGET_USD", "2");
     spent(1.98, new Date("2026-11-19T09:00:00.000Z")); // $0.02 left: an $0.008 Decision note fits, a $0.025 brief can't
     expect(moduleUnavailable(db, "decision_note", NOON)).toBeNull();
     expect(moduleUnavailable(db, "brief", NOON)).toBe("budget");
 
-    await call("brief").catch(() => {}); // refused for budget
+    await expect(call("brief")).rejects.toBeInstanceOf(AiRefusal);
+    expect(budgetStatus(db, NOON).reachedAt).toEqual(NOON); // the /review banner shows
+    expect(moduleUnavailable(db, "decision_note", NOON)).toBeNull();
+    expect(moduleUnavailable(db, "brief", NOON)).toBe("budget");
+  });
+
+  it("re-enables a module as soon as the budget is raised, mid-day, and at the next UTC day", async () => {
+    vi.stubEnv("AI_DAILY_BUDGET_USD", "2");
+    spent(1.995, new Date("2026-11-19T09:00:00.000Z"));
+    await call("brief").catch(() => {});
+    expect(moduleUnavailable(db, "brief", NOON)).toBe("budget");
+
+    vi.stubEnv("AI_DAILY_BUDGET_USD", "3");
+    expect(moduleUnavailable(db, "brief", NOON)).toBeNull();
+    await expect(call("brief")).resolves.toBeTruthy();
+
+    vi.stubEnv("AI_DAILY_BUDGET_USD", "2");
+    expect(moduleUnavailable(db, "brief", NOON)).toBe("budget");
+    expect(moduleUnavailable(db, "brief", new Date("2026-11-20T00:00:00.000Z"))).toBeNull();
+  });
+
+  it("treats a misconfigured budget as reached", () => {
+    vi.stubEnv("AI_DAILY_BUDGET_USD", "lots");
     expect(moduleUnavailable(db, "decision_note", NOON)).toBe("budget");
-    expect(moduleUnavailable(db, "decision_note", new Date("2026-11-20T00:00:00.000Z"))).toBeNull();
+  });
+});
+
+describe("disabledReason", () => {
+  it("says why, or nothing when the module can run", () => {
+    expect(disabledReason(db, "brief", NOON)).toBeNull();
+    setModuleOn(db, "brief", false, pmId);
+    expect(disabledReason(db, "brief", NOON)).toBe("The Brief writer is switched off in AI controls.");
+  });
+
+  it("disables the button, without throwing, when the AI controls can't be read", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.run(sql`DROP TABLE ai_module_settings`);
+    expect(disabledReason(db, "brief", NOON)).toBe("AI controls unavailable.");
+    logged.mockRestore();
   });
 });
 
@@ -242,6 +296,8 @@ describe("labels", () => {
 
   it("says why a button is disabled", () => {
     expect(unavailableLabel("brief", "off")).toBe("The Brief writer is switched off in AI controls.");
-    expect(unavailableLabel("decision_note", "budget")).toBe("AI budget reached; resets 00:00 UTC.");
+    expect(unavailableLabel("decision_note", "budget")).toBe(
+      "AI budget reached for the Decision note drafter; resets 00:00 UTC.",
+    );
   });
 });

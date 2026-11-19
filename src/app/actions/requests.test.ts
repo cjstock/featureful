@@ -73,3 +73,26 @@ describe("the submit rate limit", () => {
     expect(await submit(11)).toMatchObject({ ok: true });
   });
 });
+
+describe("the propose rate limit", () => {
+  // The $0 budget refuses every Matcher call before it is sent, so each propose still records one
+  // (refused) Matcher AI call and returns a bypassed proposal, without any network call.
+  const matcherCalls = (by: number) => db.select().from(aiCalls).all().filter((c) => c.module === "matcher" && c.personId === by);
+
+  it("lets one person ask the Matcher 20 times an hour and rejects the 21st before the Matcher runs", async () => {
+    personId = alex;
+    for (let i = 1; i <= 20; i++) {
+      expect(await proposeRequest(draft(i))).toMatchObject({ ok: true, proposal: { matcherOutcome: "budget" } });
+    }
+    expect(matcherCalls(alex)).toHaveLength(20);
+
+    expect(await proposeRequest(draft(21))).toEqual({
+      ok: false,
+      error: expect.stringMatching(/^You've checked 20 Requests for matches in the last hour\. Try again at \d\d:\d\d UTC\.$/),
+    });
+    expect(matcherCalls(alex)).toHaveLength(20);
+
+    personId = priya;
+    expect(await proposeRequest(draft(1))).toMatchObject({ ok: true });
+  });
+});

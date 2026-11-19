@@ -7,6 +7,9 @@ import { createIntake, type Matcher, type MatchingExample } from "@/lib/intake";
 import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { createMatchReview } from "@/lib/match-review";
 
+/** A seed or eval AI call must bring a per-run meter; these tests need no cap. */
+const unmetered: AiMeter = { beforeCall() {}, afterCall() {} };
+
 function setup(matcher: Matcher, onMatcherFailure?: "throw" | "bypass") {
   const db = createDb(":memory:");
   const [alex] = db.insert(people).values({ name: "Alex", role: "customer" }).returning().all();
@@ -317,7 +320,12 @@ describe("the Matcher's AI call on the Matching decision", () => {
     const intakeFor = (personId: number | null, source: "app" | "seed" = "app") =>
       createIntake({
         db,
-        matcher: createLlmMatcher(db, { source, person: personId, model: answer(problemId(grinder.id)) }),
+        matcher: createLlmMatcher(
+          db,
+          source === "app"
+            ? { source, person: personId, model: answer(problemId(grinder.id)) }
+            : { source, person: personId, model: answer(problemId(grinder.id)), meter: unmetered },
+        ),
       });
     return { db, alex, priya, grinder, intakeFor };
   }

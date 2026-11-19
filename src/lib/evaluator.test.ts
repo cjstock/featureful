@@ -5,16 +5,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createDb } from "@/db";
 import { aiCalls, people, problems, requests } from "@/db/schema";
-import { offlineModel, type AiModel } from "@/lib/ai";
+import { offlineModel, type AiMeter, type AiModel } from "@/lib/ai";
 import { evaluationFreshness } from "@/lib/evaluation-freshness";
 import { evaluateProblem, runEvaluator } from "./evaluator";
+
+/** A seed or eval AI call must bring a per-run meter; these tests need no cap. */
+const unmetered: AiMeter = { beforeCall() {}, afterCall() {} };
 
 const criterion = { score: 3, reason: "r" };
 const ANSWER = JSON.stringify({ impact: criterion, strategicFit: criterion, effort: criterion, risk: criterion });
 
 async function evaluatorCall() {
   const db = createDb(":memory:");
-  await runEvaluator(db, { source: "eval", person: null, model: offlineModel(ANSWER) }, 1, {
+  await runEvaluator(db, { source: "eval", person: null, model: offlineModel(ANSWER), meter: unmetered }, 1, {
     problem: { title: "Get roast data out", need: "I need my roast logs in other tools." },
     evidence: [
       { title: "CSV export", description: "All my roasts\nas CSV." },
@@ -76,7 +79,7 @@ describe("evaluateProblem's evaluated_at", () => {
         return offline.doGenerate(options);
       },
     };
-    await evaluateProblem(db, problemId, { source: "eval", person: null, model });
+    await evaluateProblem(db, problemId, { source: "eval", person: null, model, meter: unmetered });
 
     expect(evaluationFreshness(db, problemId).stale).toBe(true);
   });

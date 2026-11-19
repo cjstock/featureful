@@ -4,7 +4,8 @@ import { generateText, NoObjectGeneratedError, Output, type LanguageModel } from
 import { z } from "zod";
 import type { Db } from "@/db";
 import { aiCalls, type AiCallOutcome, type AiCallSource, type AiRelatedType, type CallableAiModule } from "@/db/schema";
-import { AI_MODULE_NAMES, appSpendToday, isModuleOn } from "./ai-controls";
+import { AI_MODULE_LABELS } from "./ai-calls";
+import { appSpendToday, isModuleOn, type AiUnavailableReason } from "./ai-controls";
 import { aiDailyBudgetUsd, CLAUDE_MODEL, MODEL_PRICES, type ModelPrices } from "./config";
 
 /**
@@ -25,17 +26,20 @@ export type AiMeter = {
   afterCall(costUsd: number): void;
 };
 
-/** Who an AI call is made for, and how: one per entry point (an app request, the seed, an eval run). */
+/**
+ * Who an AI call is made for, and how: one per entry point (an app request, the seed, an eval run).
+ * An app call is held to the daily app budget and the off switch. A seed or eval call is outside
+ * them, so it must bring its own per-run meter: `aiGenerate` refuses one without, so app code
+ * can't dodge the budget by claiming another source.
+ */
 export type AiCaller = {
-  source: AiCallSource;
   /** The person who triggered it; null for the seed and evals. */
   person: number | null;
   /** Defaults to the configured Claude model. Tests and offline estimates pass a stand-in. */
   model?: AiModel;
-  meter?: AiMeter;
   /** Now, for the AI call's time and today's (UTC) budget. Defaults to the system clock; tests inject one. */
   clock?: () => Date;
-};
+} & ({ source: "app"; meter?: AiMeter } | { source: Exclude<AiCallSource, "app">; meter: AiMeter });
 
 /** An app AI call made on behalf of the current person. */
 export const appCaller = (personId: number): AiCaller => ({ source: "app", person: personId });
@@ -73,7 +77,7 @@ const PER_TOKEN = 1 / 1_000_000;
  */
 export class AiRefusal extends Error {
   constructor(
-    readonly reason: "budget" | "off",
+    readonly reason: AiUnavailableReason,
     readonly module: CallableAiModule,
     message: string,
   ) {
@@ -84,7 +88,10 @@ export class AiRefusal extends Error {
 
 /**
  * Worst-case cost of app AI calls sent and not yet answered, per database, so concurrent calls
- * (e.g. "Re-evaluate all") can't overspend the budget between them.
+ * (e.g. "Re-evaluate all") can't overspend the budget between them. Released when the call ends,
+ * however it ends. It lives in this process's memory: several server processes sharing one
+ * SQLite file don't see each other's reservations, and together could overspend by up to the sum
+ * of their concurrent calls' worst cases.
  */
 const inFlightUsd = new WeakMap<Db, number>();
 
@@ -115,9 +122,16 @@ export function aiCallCost(usage: TokenUsage, prices: ModelPrices): number {
   );
 }
 
-/** The most an AI call can cost: prompt characters ÷ 4 as input tokens, plus a full answer at the output cap. */
+/**
+ * The most an AI call should cost, without a token count: prompt characters ÷ 3 as input tokens
+ * (English runs nearer 4 characters a token) at the dearer of the uncached and cache-write input
+ * prices, plus a full answer at the output cap. Still an estimate: text with fewer characters per
+ * token (e.g. CJK, often 1–2) can cost more, so the budget can be overshot by at most one call's
+ * estimation error, since every call's actual cost counts once it's recorded.
+ */
 export function worstCaseCost(promptChars: number, maxOutputTokens: number, prices: ModelPrices): number {
-  return ((promptChars / 4) * prices.input + maxOutputTokens * prices.output) * PER_TOKEN;
+  const inputPrice = Math.max(prices.input, prices.cacheWrite);
+  return ((promptChars / 3) * inputPrice + maxOutputTokens * prices.output) * PER_TOKEN;
 }
 
 let defaultModel: AiModel | undefined;
@@ -158,10 +172,10 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * id and prompt version.
  *
  * An `app` call is checked against the AI controls first, and never sent if it fails them: a
- * switched-off module is recorded as `refused_off`, and a call whose worst case (prompt chars ÷ 4
- * × input price + the output cap × output price) would cross today's (UTC) remaining budget, as
- * `refused_budget`, both throwing an `AiRefusal`. Calls still in flight count against the budget.
- * Seed and eval calls skip these checks; they keep their own meters.
+ * switched-off module is recorded as `refused_off`, and a call whose worst case (`worstCaseCost`)
+ * would cross today's (UTC) remaining budget, as `refused_budget`, both throwing an `AiRefusal`.
+ * Calls still in flight count against the budget. If the controls can't be read, the call isn't
+ * sent. Seed and eval calls skip these checks but must bring a meter, or they aren't sent either.
  *
  * On any failure (refused, a model with no price, refused by the meter, an API error, or output
  * that doesn't fit `schema`) the AI call is still recorded and the error is rethrown unchanged.
@@ -222,8 +236,14 @@ export async function aiGenerate<S extends z.ZodType>(
     throw error;
   };
 
-  // The off switch and the daily budget are the app's: seed and eval runs keep their own meters.
+  // The off switch and the daily budget are the app's: seed and eval runs bring their own meters.
   const app = source === "app";
+  if (!app && !meter) {
+    return fail(
+      "error",
+      new Error(`A ${source} AI call needs a per-run meter; refusing an unmetered call outside the daily app budget.`),
+    );
+  }
   if (app) {
     let on: boolean;
     try {
@@ -231,7 +251,7 @@ export async function aiGenerate<S extends z.ZodType>(
     } catch (error) {
       return fail("error", error); // can't read the switch: don't send
     }
-    if (!on) return fail("refused_off", new AiRefusal("off", module, `The ${AI_MODULE_NAMES[module]} is switched off`));
+    if (!on) return fail("refused_off", new AiRefusal("off", module, `The ${AI_MODULE_LABELS[module]} is switched off`));
   }
 
   if (!prices) {
@@ -271,7 +291,7 @@ export async function aiGenerate<S extends z.ZodType>(
         new AiRefusal(
           "budget",
           module,
-          `AI budget reached: this ${AI_MODULE_NAMES[module]} call could cost up to $${worstCase.toFixed(4)} and $${left.toFixed(4)} of today's $${budget.toFixed(2)} is left. It resets at 00:00 UTC.`,
+          `AI budget reached: this ${AI_MODULE_LABELS[module]} call could cost up to $${worstCase.toFixed(4)} and $${left.toFixed(4)} of today's $${budget.toFixed(2)} is left. It resets at 00:00 UTC.`,
         ),
       );
     }

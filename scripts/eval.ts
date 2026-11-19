@@ -129,7 +129,7 @@ async function main() {
   }
   console.log(
     `Estimate (worst case): $${estimated.costUsd.toFixed(4)} for ${estimated.calls} AI calls ` +
-      `(prompt chars ÷ 4 at $${prices.input}/MTok in; ${AI_MAX_OUTPUT_TOKENS.matcher} output tokens per Matcher call and ` +
+      `(prompt chars ÷ 3 at $${Math.max(prices.input, prices.cacheWrite)}/MTok in; ${AI_MAX_OUTPUT_TOKENS.matcher} output tokens per Matcher call and ` +
       `${AI_MAX_OUTPUT_TOKENS.evaluator} per Evaluator call at $${prices.output}/MTok).`,
   );
   if (estimateOnly) return;

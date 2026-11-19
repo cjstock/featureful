@@ -8,7 +8,9 @@ import {
   people,
   type CallableAiModule,
 } from "@/db/schema";
+import { AI_MODULE_LABELS } from "@/lib/ai-calls";
 import { AI_MAX_OUTPUT_TOKENS, aiDailyBudgetUsd, CLAUDE_MODEL, MODEL_PRICES } from "@/lib/config";
+import { formatUtcTime } from "@/lib/utc-time";
 
 /**
  * AI controls: the daily app budget and the per-module off switch, read by `aiGenerate` before
@@ -16,8 +18,11 @@ import { AI_MAX_OUTPUT_TOKENS, aiDailyBudgetUsd, CLAUDE_MODEL, MODEL_PRICES } fr
  * disabled writer buttons).
  */
 
-/** Why a module can't make an app AI call right now. */
-export type Unavailable = "off" | "budget";
+/**
+ * Why an app AI call can't be made: the daily budget would be crossed, or the module is switched
+ * off. Shared by refusals (`AiRefusal`), disabled buttons and "Not evaluated" copy.
+ */
+export type AiUnavailableReason = "budget" | "off";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -26,7 +31,10 @@ export function startOfUtcDay(now: Date): Date {
   return new Date(Math.floor(now.getTime() / DAY_MS) * DAY_MS);
 }
 
-/** AI calls made on `now`'s UTC day. */
+/**
+ * AI calls recorded on `now`'s UTC day. A call is recorded (and so booked) when it finishes, so a
+ * call that spans 00:00 UTC counts against the day it finished.
+ */
 function onUtcDayOf(now: Date) {
   const start = startOfUtcDay(now);
   return and(gte(aiCalls.time, start), lt(aiCalls.time, new Date(start.getTime() + DAY_MS)));
@@ -87,7 +95,7 @@ export type BudgetStatus = {
   budgetUsd: number;
   spentUsd: number;
   remainingUsd: number;
-  /** The first app AI call refused for budget today; null if none was. */
+  /** The first app AI call refused for budget today; null if none was. For the `/review` banner. */
   reachedAt: Date | null;
 };
 
@@ -109,47 +117,50 @@ export function budgetStatus(db: Db, now: Date): BudgetStatus {
 }
 
 /**
- * Why `module` can't make an app AI call now, or null if it can: it's switched off, or the budget
- * is reached (a call was refused for budget today, or not even a full answer at the module's
- * output cap would fit). For disabling buttons before a click; `aiGenerate` still checks each call.
+ * Why `module` can't make an app AI call now, or null if it can: it's switched off, or a full
+ * answer at its own output cap no longer fits today's remaining budget (current spend against the
+ * current `AI_DAILY_BUDGET_USD`, so raising the budget re-enables it at once). Per module: a
+ * refused Brief doesn't disable a cheaper Decision note draft that still fits. The prompt isn't
+ * known before a click, so `aiGenerate` still checks each call and may refuse one that this
+ * allowed. Throws if the off switch can't be read.
  */
-export function moduleUnavailable(db: Db, module: CallableAiModule, now: Date): Unavailable | null {
+export function moduleUnavailable(db: Db, module: CallableAiModule, now: Date): AiUnavailableReason | null {
   if (!isModuleOn(db, module)) return "off";
-  let status: BudgetStatus;
+  let remainingUsd: number;
   try {
-    status = budgetStatus(db, now);
+    remainingUsd = budgetStatus(db, now).remainingUsd;
   } catch {
     return "budget"; // a misconfigured budget refuses every call
   }
   const fullAnswerUsd = (AI_MAX_OUTPUT_TOKENS[module] * MODEL_PRICES[CLAUDE_MODEL].output) / 1_000_000;
-  if (status.reachedAt || fullAnswerUsd > status.remainingUsd) return "budget";
-  return null;
+  return fullAnswerUsd > remainingUsd ? "budget" : null;
 }
-
-const utcTime = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC" });
 
 /** The `/review` banner: "AI budget reached at 14:05 UTC; resets 00:00 UTC". */
 export function budgetReachedLabel(reachedAt: Date): string {
-  return `AI budget reached at ${utcTime.format(reachedAt)} UTC; resets 00:00 UTC`;
+  return `AI budget reached at ${formatUtcTime(reachedAt)} UTC; resets 00:00 UTC`;
 }
-
-/** Each callable module's name in copy ("The Evaluator is switched off"). */
-export const AI_MODULE_NAMES: Record<CallableAiModule, string> = {
-  matcher: "Matcher",
-  evaluator: "Evaluator",
-  decision_note: "Decision note drafter",
-  brief: "Brief writer",
-};
 
 /** Why a button that makes an AI call is disabled. */
-export function unavailableLabel(module: CallableAiModule, why: Unavailable): string {
+export function unavailableLabel(module: CallableAiModule, why: AiUnavailableReason): string {
   return why === "off"
-    ? `The ${AI_MODULE_NAMES[module]} is switched off in AI controls.`
-    : "AI budget reached; resets 00:00 UTC.";
+    ? `The ${AI_MODULE_LABELS[module]} is switched off in AI controls.`
+    : `AI budget reached for the ${AI_MODULE_LABELS[module]}; resets 00:00 UTC.`;
 }
 
-/** For a button that makes an app AI call: why it's disabled now, or null if it isn't. */
+export const CONTROLS_UNAVAILABLE = "AI controls unavailable.";
+
+/**
+ * For a button that makes an app AI call: why it's disabled now, or null if it isn't. Fails
+ * closed without breaking the page: if the controls can't be read, the button is disabled.
+ */
 export function disabledReason(db: Db, module: CallableAiModule, now = new Date()): string | null {
-  const why = moduleUnavailable(db, module, now);
+  let why: AiUnavailableReason | null;
+  try {
+    why = moduleUnavailable(db, module, now);
+  } catch (error) {
+    console.error(`Couldn't read the AI controls for the ${module} module`, error);
+    return CONTROLS_UNAVAILABLE;
+  }
   return why && unavailableLabel(module, why);
 }

@@ -46,8 +46,10 @@ export const DEFAULT_AI_DAILY_BUDGET_USD = 2;
 
 /**
  * The daily budget for `app` AI calls, in USD, from `AI_DAILY_BUDGET_USD` (default $2). It resets
- * at 00:00 UTC; seed and eval runs keep their own per-run caps. Read on every AI call, so a change
- * applies without a restart. Throws if the variable is set to anything but a non-negative amount.
+ * at 00:00 UTC. Seed and eval calls don't count against it: `aiGenerate` refuses them unless they
+ * bring their own per-run meter (`SEED_RUN_CAP`, the eval's `EVAL_CAP`). Read on every AI call, so
+ * a change applies without a restart. Throws if the variable is set to anything but a non-negative
+ * amount.
  */
 export function aiDailyBudgetUsd(): number {
   const raw = process.env.AI_DAILY_BUDGET_USD?.trim();
@@ -59,5 +61,23 @@ export function aiDailyBudgetUsd(): number {
   return budget;
 }
 
-/** Request submissions: at most `max` per person in any rolling `windowMs`. */
-export const REQUEST_RATE_LIMIT = { max: 10, windowMs: 60 * 60 * 1000 } as const;
+/** A per-run cap on AI calls and spend, for runs outside the daily app budget. */
+export type RunCap = { maxCalls: number; maxCostUsd: number };
+
+/** The seed's per-run cap (`npm run seed`; `--max-ai-calls` can lower the call count). */
+export const SEED_RUN_CAP: RunCap = { maxCalls: 60, maxCostUsd: 1 };
+
+/** Rolling-window rate limits, per person. */
+export type RateLimit = { max: number; windowMs: number };
+
+const HOUR_MS = 60 * 60 * 1000;
+
+/** Request submissions: at most 10 per person in any rolling hour. */
+export const REQUEST_RATE_LIMIT: RateLimit = { max: 10, windowMs: HOUR_MS };
+
+/**
+ * Matcher proposals ("Continue" on `/submit`, one Matcher AI call each, any outcome): at most 20
+ * per person in any rolling hour, twice the submit limit so a person can revise a Request before
+ * saving it. Without it, one person could spend the whole shared daily budget on proposals.
+ */
+export const PROPOSE_RATE_LIMIT: RateLimit = { max: 2 * REQUEST_RATE_LIMIT.max, windowMs: HOUR_MS };

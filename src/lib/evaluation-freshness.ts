@@ -2,6 +2,8 @@ import { eq, max, sql } from "drizzle-orm";
 import type { Db } from "@/db";
 import { aiCalls, problems, requests, type AiCallOutcome } from "@/db/schema";
 import { evaluatorCallsAbout, newestAiCallFirst } from "@/lib/ai-calls";
+import type { AiUnavailableReason } from "@/lib/ai-controls";
+import { formatUtcTime } from "@/lib/utc-time";
 
 /** Whether a Problem's evaluation still reflects it (see "Freshness" in the v2 spec). */
 export interface EvaluationFreshness {
@@ -13,14 +15,12 @@ export interface EvaluationFreshness {
    * When that latest call was refused rather than failed: over the daily budget, or the Evaluator
    * switched off. Shown as "Not evaluated (budget reached / Evaluator off)".
    */
-  refusal: EvaluationRefusal | null;
+  refusal: AiUnavailableReason | null;
 }
-
-export type EvaluationRefusal = "budget" | "off";
 
 const FRESH: EvaluationFreshness = { stale: false, failedAt: null, refusal: null };
 
-const REFUSALS: Partial<Record<AiCallOutcome, EvaluationRefusal>> = { refused_budget: "budget", refused_off: "off" };
+const REFUSALS: Partial<Record<AiCallOutcome, AiUnavailableReason>> = { refused_budget: "budget", refused_off: "off" };
 
 /** Neither stale nor failed: nothing to show. */
 export function isFresh({ stale, failedAt }: EvaluationFreshness): boolean {
@@ -81,24 +81,17 @@ function freshnessByProblemId(db: Db, problemId?: number): Map<number, Evaluatio
 
 export const STALE_LABEL = "Stale: new Evidence since the last evaluation";
 
-const utcTime = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-  timeZone: "UTC",
-});
-
 /** "Evaluation failed at 21:05 UTC". */
 export function failedAtLabel(failedAt: Date): string {
-  return `Evaluation failed at ${utcTime.format(failedAt)} UTC`;
+  return `Evaluation failed at ${formatUtcTime(failedAt)} UTC`;
 }
 
-const NOT_EVALUATED: Record<EvaluationRefusal, string> = {
+const NOT_EVALUATED: Record<AiUnavailableReason, string> = {
   budget: "Not evaluated (budget reached)",
   off: "Not evaluated (Evaluator off)",
 };
 
 /** "Not evaluated (budget reached)" or "Not evaluated (Evaluator off)". */
-export function notEvaluatedLabel(refusal: EvaluationRefusal): string {
+export function notEvaluatedLabel(refusal: AiUnavailableReason): string {
   return NOT_EVALUATED[refusal];
 }

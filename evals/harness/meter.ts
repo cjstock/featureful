@@ -1,47 +1,21 @@
 import type { AiMeter } from "@/lib/ai";
+import type { RunCap } from "@/lib/config";
+import type { Meter } from "@/lib/ai-meter";
 
 /**
- * The eval's local AI-call meter: counts calls and cost, and refuses a call that would go over
- * the per-run cap (60 calls or $1). It plugs into `aiGenerate` (an `AiMeter`), which hands it each
- * call's worst case (prompt chars ÷ 4 at the input price, plus the module's output cap, 1,000
- * tokens for the Matcher and 1,500 for the Evaluator, at the output price) before sending, and
- * what the call actually cost after.
+ * The eval's local AI-call meter: the per-run meter (`src/lib/ai-meter.ts`, shared with the seed)
+ * capped at 60 calls or $1. `aiGenerate` hands it each call's worst case (`worstCaseCost`: prompt
+ * chars ÷ 3 at the dearer input price, plus the module's output cap, 1,000 tokens for the Matcher
+ * and 1,500 for the Evaluator, at the output price) before sending, and what the call actually
+ * cost after.
  */
 
+export { CapReachedError, createMeter, type Meter } from "@/lib/ai-meter";
+
 /** A per-run cap on AI calls and spend. */
-export type EvalCap = { maxCalls: number; maxCostUsd: number };
+export type EvalCap = RunCap;
 
 export const EVAL_CAP: EvalCap = { maxCalls: 60, maxCostUsd: 1 };
-
-export class CapReachedError extends Error {
-  name = "CapReachedError";
-}
-
-export type Meter = AiMeter & { totals: () => { calls: number; costUsd: number } };
-
-export function createMeter(cap: EvalCap): Meter {
-  let calls = 0;
-  let costUsd = 0;
-  return {
-    /** Call before each AI call with its worst-case cost; throws `CapReachedError` rather than risk the cap. */
-    beforeCall(estimatedCostUsd: number) {
-      if (calls >= cap.maxCalls) {
-        throw new CapReachedError(`Eval cap reached: ${cap.maxCalls} AI calls already made this run.`);
-      }
-      if (costUsd + estimatedCostUsd > cap.maxCostUsd) {
-        throw new CapReachedError(
-          `Eval cap reached: $${costUsd.toFixed(4)} spent and the next call (up to $${estimatedCostUsd.toFixed(4)}) would pass $${cap.maxCostUsd}.`,
-        );
-      }
-      calls++;
-    },
-    /** Record what a call actually cost. */
-    afterCall(actualCostUsd: number) {
-      costUsd += actualCostUsd;
-    },
-    totals: () => ({ calls, costUsd }),
-  };
-}
 
 /**
  * For an offline estimate: counts every call at its worst case, under the same cap rule as a live
