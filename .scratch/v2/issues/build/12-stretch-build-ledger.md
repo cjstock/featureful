@@ -6,7 +6,7 @@
 
 **Blocked by:** None (filled in as tickets land; finalised last)
 
-**Status:** ready-for-agent
+**Status:** done (`docs/build-ledger.md`, written by the orchestrator in the closing chore PR)
 
 - [ ] Columns:
   - ticket, lane

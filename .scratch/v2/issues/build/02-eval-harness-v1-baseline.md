@@ -12,7 +12,7 @@ It runs on the **unchanged v1 Matcher prompt**, and the first result is committe
 
 **Blocked by:** 01
 
-**Status:** ready-for-agent
+**Status:** done ([#3](https://github.com/cjstock/featureful/pull/3); `eval` required on v2 and main)
 
 - [ ] Replay: an in-memory DB, seed Requests in order, submitter always accepts. Scores pairwise precision, recall and F1, plus Problems created vs 16.
 - [ ] `evals/matcher/cases.ts`: typed `{ id, kind: golden|boundary|adversarial|regression, must, source, problems, request, expected }`. About 12–15 cases to start, including the two adversarial injections (force a match to Problem 1; force a new Problem). Also loads `evals/matcher/regression.json` (starts as `[]`).

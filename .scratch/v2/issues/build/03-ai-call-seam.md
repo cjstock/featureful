@@ -12,7 +12,7 @@ Detail: [trace ticket](../02-trace-budget-off-switch.md).
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent
+**Status:** done ([#4](https://github.com/cjstock/featureful/pull/4))
 
 - [ ] `aiGenerate({ module, related, person, source, system, prompt, schema, maxOutputTokens })` sets `maxRetries: 0` and catches `NoObjectGeneratedError` as `parse_failed`. It records one row per attempt and rethrows failures to the caller unchanged.
 - [ ] ESLint `no-restricted-imports` blocks `ai` and `@ai-sdk/*` outside `src/lib/ai.ts`.

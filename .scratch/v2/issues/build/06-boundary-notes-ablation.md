@@ -6,7 +6,7 @@
 
 **Blocked by:** 02
 
-**Status:** ready-for-agent until the numbers are posted, then ready-for-human for the decision
+**Status:** done ([#8](https://github.com/cjstock/featureful/pull/8)): **CUT**, decided by rule overnight; the human may overturn (ADR 0003; ceiling effect noted). Runnable ablation record: branch `archive/06-ablation-runner` (64581dd9).
 
 - [ ] 8–10 `kind: boundary` cases where the PM's line isn't obvious from titles (e.g. roast-data import vs profile import, export vs personal copy, grinder retention vs calibration), each with a simulated review.
 - [ ] Fixtures: the reviews as Matching examples. Notes are generated **once** by the real Boundary-note writer from those reviews and committed under `evals/matcher/ablation/`, with the human checking them in the PR.

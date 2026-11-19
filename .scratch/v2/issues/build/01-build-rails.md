@@ -12,7 +12,7 @@ Detail: [delegation charter ticket](../08-delegation-charter.md).
 
 **Blocked by:** None
 
-**Status:** ready-for-agent (plus a human checklist)
+**Status:** done ([#2](https://github.com/cjstock/featureful/pull/2); branch protection set)
 
 - [ ] `docs/agents/delegation-charter.md`: you are the decision owner on every ticket. It defines what's in each lane and the review depth for each: Green = checks + skim; Yellow = diff + eval vs baseline; Red = line by line + failure-path tests. A PR takes the highest lane it touches. It's linked from `CLAUDE.md`.
 - [ ] `.github/pull_request_template.md` has these sections:

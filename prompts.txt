@@ -161,3 +161,36 @@
   Response: Resolved ticket 09; map destination reached (all 9 wayfinder tickets resolved; fog empty).
 [2026-11-18T21:12:51-08:00] Prompt: Clear context next and work through the build tickets with minimal interaction (going to sleep).
   Response: Asked overnight authority: agents merge into v2 (never main), gh secret + branch protection allowed, ablation by agreed rule, $5 API spend cap. Pushed v2, set ANTHROPIC_API_KEY repo secret (piped from .env, never printed), wrote .scratch/v2/build-runbook.md, updated build tickets 01/02.
+[2026-11-18T21:14:22-08:00] Prompt: Run the v2 build per .scratch/v2/build-runbook.md. Don't ask me anything; I'm asleep.
+  Response: (orchestration) Started overnight v2 build orchestration; reading runbook, spec and build tickets.
+[2026-11-18T21:15:37-08:00] Prompt: Quick check that the Anthropic key works before I leave.
+  Response: (orchestration) Free /v1/models returned 200; one 1-token Haiku call returned 200, so the key is valid and funded (<$0.0001 logged against the cap).
+[2026-11-18T21:16:00-08:00] (orchestration) Created workspaces b01, b10 on v2@origin; spawned implementers for build tickets 01 (build rails, Red) and 10 (Effort/Risk AI estimate, Green).
+[2026-11-18T21:19:18-08:00] (orchestration) Ticket 10 PR #1 opened (Green; skimmed OK, one formatting nit). Holding merge until ticket 01 adds the checks job, then rebase and gate. Implementer rules updated: hard-linked node_modules, gh api for PR creation.
+[2026-11-18T21:21:54-08:00] (orchestration) Ticket 01 PR #2 opened, checks green on first run. Red lane: running /code-review (standards + spec) before merge.
+[2026-11-18T21:22:49-08:00] (orchestration) PR #2 review: standards 2 glossary-drift findings + judgement calls; spec: nothing missing, minor notes. Sent fix pass 1 (AI call wording, define AI files, CSS rule reason).
+[2026-11-18T21:27:34-08:00] (orchestration) Merged PR #2 (ticket 01) after fix pass 1; branch protection on v2 requires checks. Rebased PR #1 (ticket 10) onto v2, fixed spacing nit, verified next build + rendered tag (PM sees 2, Customer 0), checks green, merged. Started ticket 02 in workspace b02.
+[2026-11-18T21:40:46-08:00] (orchestration) Ticket 02 PR #3 opened; checks + eval green; spend $0.415 (local baseline $0.209 + CI $0.206). Running /code-review (Red lane for CI).
+[2026-11-18T21:42:34-08:00] (orchestration) PR #3 reviews: spec OK (minor: reason on new-flips, regression.json validation); standards found cost cap not hard (no maxOutputTokens) + lane/CI hygiene. Sent fix pass 1 (single push to limit CI eval spend).
+[2026-11-18T21:48:49-08:00] (orchestration) Merged PR #3 (ticket 02) after fix pass 1; ticket-02 spend $0.6234. Branch protection: v2 + main require checks + eval. Started tickets 03 (b03) and 06 (b06).
+[2026-11-18T22:00:13-08:00] (orchestration) Ticket 06 phase 1: ablation run once ($0.5475 incl. note writing). (c)-(b) = +0/+0, no golden regressions -> CUT by rule; ceiling effect flagged (arm a already 8/8, 7/8). Phase 2 (removal) waits for ticket 03 to merge. Spend now $1.17.
+[2026-11-18T22:09:28-08:00] (orchestration) Ticket 03 PR #4 opened; checks + eval green, 0 flips, prompts byte-identical; spend $0.4156 (now $1.59). Running /code-review (Red).
+[2026-11-18T22:11:36-08:00] (orchestration) PR #4 reviews: spec OK; standards found Brief truncation risk under new cap, unguarded record() in catch, spoofable decision->AI call link. Sent fix pass 1 (single push).
+[2026-11-18T22:18:43-08:00] (orchestration) Merged PR #4 (ticket 03) after fix pass 1 (ticket spend $0.63; total $1.80). Started 04 (b04) and 08 (b08); 08 holds its push until 04 merges (both change the Matcher prompt). 06 cut work follows 04 (migration ordering).
+[2026-11-19T09:46:09-08:00] (orchestration) Ticket 08 built offline (197 tests), holding for 04. Ticket 04 implementer was stopped by the Claude Code 5-hour usage limit before pushing; resumed after the 01:00 reset.
+[2026-11-19T09:51:35-08:00] (orchestration) PR #5 (ticket 04): CI eval gate FAIL (replay F1 0.750 vs 0.846; local run identical to baseline). Parked per runbook: labelled needs-human, commented, Status needs-human. Spend $2.28. Resumed 08 (add filter paths, one live eval, push) and 06 phase 2 (CUT, offline, hold push until 08 merges).
+[2026-11-19T09:58:28-08:00] (orchestration) Ticket 06 phase 2 (CUT) committed offline, waits for 08. Ticket 08 PR #6: checks + eval green; same-commit replay gave F1 0.846 local vs 1.000 CI (noise evidence for PR #5). Spend $2.73. Running /code-review on #6 (Red: CI filter).
+[2026-11-19T10:00:02-08:00] (orchestration) PR #6 reviews: spec flagged cost-rule adjustment as gate loosening; standards found escaping bypasses, untagged author name, filter gaps. Sent fix pass 1 (drop cost adjustment, escape every <, tag author, widen filter).
+[2026-11-19T10:05:29-08:00] Prompt: keep going
+  Response: (orchestration) Continuing; started stretch ticket 11 (evaluation freshness) in b11 while PR #6 fix pass runs; 06 waits for #6.
+[2026-11-19T10:06:22-08:00] (orchestration) Merged PR #6 (ticket 08) after fix pass 1; ticket spend $0.67, total $2.95. Telling 06 to rebase, eval once, push.
+[2026-11-19T10:08:00-08:00] Prompt: keep going
+  Response: (orchestration) Waiting on 06 (eval+push) and 11; drafting build ledger (ticket 12) from PR timestamps and recorded spend.
+[2026-11-19T10:10:18-08:00] (orchestration) Ticket 11 PR #7 opened (no AI files, no spend). Running /code-review (Yellow).
+[2026-11-19T10:11:52-08:00] (orchestration) PR #7 reviews: evaluatedAt stamped after the AI call (mid-evaluation Evidence never stale) + dup query/naming. Sent fix pass 1 (rebase onto v2, fix timing; one paid CI eval accepted).
+[2026-11-19T10:13:52-08:00] (orchestration) Ticket 06 PR #8 (CUT): checks + eval green, -note cases still pass, no baseline change; spend $0.4453 (total $3.39). Running /code-review (Red: column-drop migration).
+[2026-11-19T10:15:36-08:00] (orchestration) PR #8 reviews: no hard bugs; gaps = ablation runner unreachable (only in local jj history), ADR commit context wrong, misleading cases.ts comment, retired module still callable. Sent fix pass 1 incl. pushing archive/06-ablation-runner.
+[2026-11-19T10:16:30-08:00] Prompt: keep going
+  Response: (orchestration) Waiting on fix passes for PR #7 (ticket 11) and PR #8 (ticket 06); then merge, then ledger + status chore PR.
+[2026-11-19T10:17:31-08:00] (orchestration) Merged PR #7 (ticket 11) after fix pass 1 (CI eval $0.2254; total $3.61).
+[2026-11-19T10:22:24-08:00] (orchestration) Merged PR #8 (ticket 06, CUT) after fix pass 1 (CI $0.2149). Final spend $3.83/$5. Stopped on runbook condition: critical path parked (04) with nothing else unblocked. Wrote final morning report (.scratch/v2/build-status.md), set all ticket Status lines, wrote docs/build-ledger.md (ticket 12); opening closing chore PR to v2.

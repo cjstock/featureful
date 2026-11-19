@@ -12,7 +12,7 @@ Detail: [trace ticket](../02-trace-budget-off-switch.md).
 
 **Blocked by:** 04
 
-**Status:** ready-for-agent
+**Status:** ready-for-agent (blocked: 04 is parked, needs-human)
 
 - [ ] `AI_DAILY_BUDGET_USD` (default 2) sums `cost_usd` over today's (UTC) `source: app` AI calls. The worst case before a call is (prompt chars ÷ 4 × input price) + (cap × output price). Over budget means the call is not sent and an AI call row is written with `refused_budget`.
 - [ ] Settings table with one on/off row per module, and an audit table (module, on, person, at). PM-only server actions, guarded server-side. A call to a switched-off module writes `refused_off`.
