@@ -12,7 +12,7 @@ import {
   type SubmitterChoice,
   type Verdict,
 } from "@/db/schema";
-import type { AiCallLine } from "@/lib/ai-calls";
+import { summaryColumns, type AiCallLine } from "@/lib/ai-calls";
 
 export const SUBMITTER_CHOICE_LABELS: Record<SubmitterChoice, string> = {
   accepted: "Accepted the match",
@@ -112,14 +112,7 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
       reviewerName: reviewer.name,
       fromTitle: fromProblem.title,
       toTitle: toProblem.title,
-      aiCall: {
-        id: aiCalls.id,
-        module: aiCalls.module,
-        promptVersion: aiCalls.promptVersion,
-        costUsd: aiCalls.costUsd,
-        latencyMs: aiCalls.latencyMs,
-        outcome: aiCalls.outcome,
-      },
+      aiCall: summaryColumns,
     })
     .from(matchingDecisions)
     .innerJoin(requests, eq(requests.id, matchingDecisions.requestId))

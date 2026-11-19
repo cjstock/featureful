@@ -17,7 +17,8 @@ export const AI_MODULE_LABELS: Record<AiModule, string> = {
 export type AiCallSummary = Pick<AiCall, "module" | "promptVersion" | "costUsd" | "latencyMs" | "outcome">;
 export type AiCallLine = AiCallSummary & { id: number };
 
-const summaryColumns = {
+/** The columns of an `AiCallLine`, for selects that show one. */
+export const summaryColumns = {
   id: aiCalls.id,
   module: aiCalls.module,
   promptVersion: aiCalls.promptVersion,

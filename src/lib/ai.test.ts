@@ -3,7 +3,7 @@
  * failures reach the caller unchanged, and cost follows the price table. No network calls.
  */
 import { MockLanguageModelV4 } from "ai/test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { createDb, type Db } from "@/db";
 import { aiCalls, people } from "@/db/schema";
@@ -131,8 +131,10 @@ describe("aiGenerate", () => {
 
     const thrown = await aiGenerate({ ...base(), model }).catch((error) => error);
 
-    expect(thrown).toBeInstanceOf(Error);
+    // The SDK's own NoObjectGeneratedError, not a wrapper: it still carries the raw text and usage.
     expect(thrown.name).toBe("AI_NoObjectGeneratedError");
+    expect(thrown.text).toBe('{"wrong":1}');
+    expect(thrown.usage.outputTokens).toBe(200);
     const [row] = db.select().from(aiCalls).all();
     expect(row).toMatchObject({
       outcome: "parse_failed",
@@ -153,15 +155,16 @@ describe("aiGenerate", () => {
   it("lets a meter refuse a call before it is sent, recording it as refused_budget", async () => {
     const model = answering('{"answer":"yes"}');
     const seen: number[] = [];
+    const refusal = new Error("Eval cap reached");
     const meter: AiMeter = {
       beforeCall(worstCaseUsd) {
         seen.push(worstCaseUsd);
-        throw new Error("Eval cap reached");
+        throw refusal;
       },
       afterCall() {},
     };
 
-    await expect(aiGenerate({ ...base(), model, meter })).rejects.toThrow("Eval cap reached");
+    expect(await aiGenerate({ ...base(), model, meter }).catch((error) => error)).toBe(refusal);
 
     expect(model.doGenerateCalls).toHaveLength(0);
     expect(seen[0]).toBeGreaterThan(0.015); // at least 1,500 output tokens at $10/MTok
@@ -176,10 +179,62 @@ describe("aiGenerate", () => {
     expect(costs).toEqual([expect.closeTo(0.0043, 8), expect.closeTo(0.0043, 8)]);
   });
 
-  it("refuses a model with no price in the table, without sending anything", async () => {
+  it("refuses a model with no price in the table, without sending anything, recording an error row", async () => {
     const model = new MockLanguageModelV4({ modelId: "unpriced-model" });
     await expect(aiGenerate({ ...base(), model })).rejects.toThrow(/no price/i);
     expect(model.doGenerateCalls).toHaveLength(0);
+    expect(db.select().from(aiCalls).get()).toMatchObject({
+      outcome: "error",
+      model: "unpriced-model",
+      costUsd: 0,
+      error: expect.stringMatching(/no price/i),
+    });
+  });
+
+  it("records an error row, without sending, when the schema can't be sized for the worst case", async () => {
+    const model = answering('{"when":"x"}');
+    const meter: AiMeter = { beforeCall() {}, afterCall() {} };
+    const unrepresentable = z.object({ when: z.date() });
+
+    await expect(aiGenerate({ ...base(), schema: unrepresentable, model, meter })).rejects.toThrow();
+
+    expect(model.doGenerateCalls).toHaveLength(0);
+    expect(db.select().from(aiCalls).get()).toMatchObject({ outcome: "error" });
+  });
+
+  it("still rethrows the original error when the AI call row can't be written", async () => {
+    const failure = new Error("Anthropic API is down");
+    const model = mockModel(async () => {
+      throw failure;
+    });
+    const refusal = new Error("Eval cap reached");
+    const refusing: AiMeter = {
+      beforeCall() {
+        throw refusal;
+      },
+      afterCall() {},
+    };
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$client.close();
+
+    expect(await aiGenerate({ ...base(), model }).catch((error) => error)).toBe(failure);
+    expect(await aiGenerate({ ...base(), model, meter: refusing }).catch((error) => error)).toBe(refusal);
+    expect(logged).toHaveBeenCalledTimes(2);
+    logged.mockRestore();
+  });
+
+  it("meters a paid call even when its row can't be written", async () => {
+    const costs: number[] = [];
+    const meter: AiMeter = { beforeCall() {}, afterCall: (cost) => costs.push(cost) };
+    const model = answering('{"answer":"yes"}');
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$client.close();
+
+    await expect(aiGenerate({ ...base(), model, meter })).rejects.toThrow();
+    await expect(aiGenerate({ ...base(), model: answering("not json"), meter })).rejects.toThrow();
+
+    expect(costs).toEqual([expect.closeTo(0.0043, 8), expect.closeTo(0.0043, 8)]);
+    logged.mockRestore();
   });
 });
 

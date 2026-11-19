@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, or } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
   aiCalls,
@@ -9,6 +9,7 @@ import {
   type SubmitterChoice,
 } from "@/db/schema";
 import { listMatchingExamples, type MatchingDecisionItem } from "@/lib/match-review";
+import { isMatcherPromptFor } from "./llm-matcher";
 
 /** A Request as typed by the submitter, before it is saved. */
 export type RequestDraft = { title: string; description: string };
@@ -158,23 +159,25 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
       const proposedProblemId =
         match &&
         tx.select({ id: problems.id }).from(problems).where(eq(problems.id, match.problemId)).get()?.id;
-      // The proposal comes back from the client, so only link an AI call that is this person's
-      // own Matcher call and not yet linked to a Request.
-      const aiCall = proposal.aiCallId
+      // The proposal comes back from the client, so only link an AI call that is this person's own
+      // unused app Matcher call about this same Request; anything else saves the decision unlinked.
+      const candidate = proposal.aiCallId
         ? tx
-            .select({ id: aiCalls.id, promptVersion: aiCalls.promptVersion })
+            .select({ id: aiCalls.id, promptVersion: aiCalls.promptVersion, prompt: aiCalls.prompt })
             .from(aiCalls)
             .where(
               and(
                 eq(aiCalls.id, proposal.aiCallId),
+                eq(aiCalls.source, "app"),
                 eq(aiCalls.module, "matcher"),
                 eq(aiCalls.outcome, "ok"),
                 isNull(aiCalls.relatedId),
-                or(isNull(aiCalls.personId), eq(aiCalls.personId, personId)),
+                eq(aiCalls.personId, personId),
               ),
             )
             .get()
         : undefined;
+      const aiCall = candidate && isMatcherPromptFor(candidate.prompt, request) ? candidate : undefined;
       if (aiCall) {
         tx.update(aiCalls)
           .set({ relatedType: "request", relatedId: requestId })

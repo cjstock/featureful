@@ -8,6 +8,8 @@ export type ModelPrices = { input: number; output: number; cacheRead: number; ca
 
 export const MODEL_PRICES: Record<string, ModelPrices> = {
   "claude-sonnet-5-5": { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+  // Unused today. Input/output are from the research ticket; the cache prices are UNVERIFIED (not
+  // from a primary source), so check them before routing any AI call to Haiku.
   "claude-haiku-5-5": { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 };
 

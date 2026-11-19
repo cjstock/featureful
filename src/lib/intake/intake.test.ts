@@ -314,10 +314,10 @@ describe("the Matcher's AI call on the Matching decision", () => {
       .values({ title: "Dial in grind size", need: "I need to know which grind setting produced a brew I liked." })
       .returning()
       .get();
-    const intakeFor = (personId: number) =>
+    const intakeFor = (personId: number | null, source: "app" | "seed" = "app") =>
       createIntake({
         db,
-        matcher: createLlmMatcher(db, { source: "app", person: personId, model: answer(problemId(grinder.id)) }),
+        matcher: createLlmMatcher(db, { source, person: personId, model: answer(problemId(grinder.id)) }),
       });
     return { db, alex, priya, grinder, intakeFor };
   }
@@ -356,24 +356,27 @@ describe("the Matcher's AI call on the Matching decision", () => {
     });
   });
 
-  it("ignores an AI call id echoed back that isn't this person's unused Matcher call", async () => {
+  it("links only this person's own unused app Matcher call for this same Request; otherwise saves the decision unlinked", async () => {
     const { db, alex, priya, intakeFor } = setupLlm(() => null);
-    const alexProposal = await intakeFor(alex.id).propose(request);
+    const decide = (personId: number, aiCallId: number | null | undefined, draft = request) => {
+      const intake = intakeFor(personId);
+      return intake.confirm(draft, { match: null, newProblem: NEW_PROBLEM, aiCallId }, { createProblem: NEW_PROBLEM }, personId);
+    };
+    const alexCall = (await intakeFor(alex.id).propose(request)).aiCallId!;
+    const seedCall = (await intakeFor(null, "seed").propose(request)).aiCallId!;
+    const otherRequestCall = (await intakeFor(alex.id).propose({ title: "Dark mode", description: "Please." })).aiCallId!;
 
-    // Priya replays Alex's AI call id, and one that doesn't exist.
-    const priyaIntake = intakeFor(priya.id);
-    const priyaProposal = await priyaIntake.propose(request);
-    priyaIntake.confirm(request, { ...priyaProposal, aiCallId: alexProposal.aiCallId }, { createProblem: NEW_PROBLEM }, priya.id);
-    priyaIntake.confirm(request, { ...priyaProposal, aiCallId: 999 }, { createProblem: NEW_PROBLEM }, priya.id);
-
-    // A call already linked to a Request can't be linked again.
-    const alexIntake = intakeFor(alex.id);
-    alexIntake.confirm(request, alexProposal, { createProblem: NEW_PROBLEM }, alex.id);
-    alexIntake.confirm(request, alexProposal, { createProblem: NEW_PROBLEM }, alex.id);
+    decide(priya.id, alexCall); // another person's call
+    decide(alex.id, seedCall); // a seed call (no person, not the app)
+    decide(alex.id, otherRequestCall); // made for a different Request
+    decide(alex.id, 999); // doesn't exist
+    decide(alex.id, alexCall); // the real one: linked
+    decide(alex.id, alexCall); // already linked to a Request
 
     const decisions = db.select().from(matchingDecisions).orderBy(matchingDecisions.id).all();
-    expect(decisions.map((d) => d.aiCallId)).toEqual([null, null, alexProposal.aiCallId, null]);
-    expect(decisions.map((d) => d.promptVersion !== null)).toEqual([false, false, true, false]);
+    expect(decisions.map((d) => d.aiCallId)).toEqual([null, null, null, null, alexCall, null]);
+    expect(decisions.map((d) => d.promptVersion !== null)).toEqual([false, false, false, false, true, false]);
+    expect(db.select().from(requests).all()).toHaveLength(6);
   });
 
   it("records no AI call for a Matcher that isn't the AI (a fake), and still saves the decision", async () => {

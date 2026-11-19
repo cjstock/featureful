@@ -31,12 +31,27 @@ Plain, direct prose. No markdown headings, no preamble, no closing remarks.`;
 
 const RECOMMENDATION_LABELS = { do: "Do", defer: "Defer", decline: "Decline" } as const;
 
-const briefSchema = z.object({
+/**
+ * Longest Evidence quote the brief may carry. Request descriptions run to 5,000 characters, so an
+ * unbounded "verbatim quote" could push the brief past its 2,500-token output cap.
+ */
+export const MAX_QUOTE_CHARS = 300;
+
+export const briefSchema = z.object({
   problemStatement: z.string().min(1),
   evidence: z.object({
     summary: z.string().min(1),
     quotes: z
-      .array(z.object({ text: z.string().min(1), author: z.string() }))
+      .array(
+        z.object({
+          text: z
+            .string()
+            .min(1)
+            .max(MAX_QUOTE_CHARS)
+            .describe(`A short verbatim excerpt (at most ~${MAX_QUOTE_CHARS} characters)`),
+          author: z.string(),
+        }),
+      )
       .max(3)
       .describe("2–3 verbatim quotes from the Evidence"),
   }),
