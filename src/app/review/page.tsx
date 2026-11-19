@@ -17,6 +17,9 @@ import { TONE_STYLES } from "@/components/tone-styles";
 import { MatchReviewControls } from "@/components/match-review-controls";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+// PROTOTYPE (v2 wayfinder ticket 05): throwaway variants on ?variant=A|B|C.
+import { buildPrototypeItems } from "./prototype-data";
+import { MatchReviewPrototype } from "./prototype-variants";
 
 const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });
 
@@ -30,8 +33,17 @@ export default async function ReviewPage({
 }) {
   const person = await getCurrentPerson();
   if (!isPm(person)) notFound();
-  const reviewedTab = (await searchParams).tab === "reviewed";
+  const params = await searchParams;
+  const reviewedTab = params.tab === "reviewed";
   const review = getMatchReview();
+  if (typeof params.variant === "string") {
+    return (
+      <MatchReviewPrototype
+        variant={params.variant}
+        data={buildPrototypeItems(getDb(), review.listQueue())}
+      />
+    );
+  }
   const queueCount = review.countQueue();
   const items = reviewedTab ? review.listReviewed() : review.listQueue();
   const problemOptions = reviewedTab
