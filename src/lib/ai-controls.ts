@@ -35,7 +35,7 @@ export function startOfUtcDay(now: Date): Date {
  * AI calls recorded on `now`'s UTC day. A call is recorded (and so booked) when it finishes, so a
  * call that spans 00:00 UTC counts against the day it finished.
  */
-function onUtcDayOf(now: Date) {
+export function onUtcDayOf(now: Date) {
   const start = startOfUtcDay(now);
   return and(gte(aiCalls.time, start), lt(aiCalls.time, new Date(start.getTime() + DAY_MS)));
 }

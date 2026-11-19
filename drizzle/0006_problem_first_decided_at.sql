@@ -1,0 +1,1 @@
+ALTER TABLE `problems` ADD `first_decided_at` integer;
