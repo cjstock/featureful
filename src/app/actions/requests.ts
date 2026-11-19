@@ -10,6 +10,7 @@ import { getCurrentPerson } from "@/lib/identity";
 import { createIntake, type Proposal } from "@/lib/intake";
 import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { tryEvaluateProblem } from "@/lib/evaluator";
+import { checkSubmitRateLimit, rateLimitMessage } from "@/lib/rate-limit";
 
 const draftSchema = z.object({
   title: z.string().trim().min(1, "Give your Request a title").max(200),
@@ -59,6 +60,9 @@ export async function proposeRequest(
     // Every role (Customer, Support agent, PM) may submit Requests.
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
+    // Checked here too, so a submitter over the limit spends no Matcher AI call.
+    const limit = checkSubmitRateLimit(getDb(), person.id, new Date());
+    if (!limit.ok) return { ok: false, error: rateLimitMessage(limit.retryAt) };
     return { ok: true, proposal: await intake(person.id).propose(draft) };
   } catch (error) {
     console.error("proposeRequest failed", error);
@@ -75,6 +79,9 @@ export async function confirmRequest(
   try {
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
+    // The rate limit itself: this check and the save below run with no await between them.
+    const limit = checkSubmitRateLimit(getDb(), person.id, new Date());
+    if (!limit.ok) return { ok: false, error: rateLimitMessage(limit.retryAt) };
     const { problemId } = intake(person.id).confirmFromClient(
       draft,
       proposalClaimSchema.parse(proposal),

@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createDb, type Db } from "@/db";
 import { aiCalls, people, problems, requests, type AiCallOutcome } from "@/db/schema";
-import { evaluationFreshness, failedAtLabel, isFresh, listEvaluationFreshness } from "@/lib/evaluation-freshness";
+import {
+  evaluationFreshness,
+  failedAtLabel,
+  isFresh,
+  listEvaluationFreshness,
+  notEvaluatedLabel,
+} from "@/lib/evaluation-freshness";
 
 let db: Db;
 let authorId: number;
@@ -66,7 +72,7 @@ describe("evaluationFreshness: stale", () => {
   it("is not stale when the Problem was never evaluated (it is Not evaluated instead)", () => {
     const id = problem(null);
     evidence(id, at(9));
-    expect(evaluationFreshness(db, id)).toEqual({ stale: false, failedAt: null });
+    expect(evaluationFreshness(db, id)).toEqual({ stale: false, failedAt: null, refusal: null });
   });
 
   it("is not stale without any Evidence", () => {
@@ -96,10 +102,26 @@ describe("evaluationFreshness: failed", () => {
     expect(evaluationFreshness(db, id).failedAt).toBeNull();
   });
 
-  it("counts refusals (over budget, switched off) as failures", () => {
-    const id = problem();
-    evaluatorCall(id, at(5), "refused_off");
-    expect(evaluationFreshness(db, id).failedAt).toEqual(at(5));
+  it("counts refusals (over budget, switched off) as failures, and says which", () => {
+    const off = problem();
+    evaluatorCall(off, at(5), "refused_off");
+    expect(evaluationFreshness(db, off)).toEqual({ stale: false, failedAt: at(5), refusal: "off" });
+
+    const budget = problem();
+    evaluatorCall(budget, at(5), "refused_budget");
+    expect(evaluationFreshness(db, budget).refusal).toBe("budget");
+  });
+
+  it("has no refusal when the latest Evaluator AI call failed some other way, or was ok", () => {
+    const failed = problem();
+    evaluatorCall(failed, at(5), "refused_budget");
+    evaluatorCall(failed, at(6), "error");
+    expect(evaluationFreshness(db, failed)).toMatchObject({ failedAt: at(6), refusal: null });
+
+    const ok = problem(at(7));
+    evaluatorCall(ok, at(5), "refused_off");
+    evaluatorCall(ok, at(7), "ok");
+    expect(evaluationFreshness(db, ok)).toMatchObject({ failedAt: null, refusal: null });
   });
 
   it("is not failed for a Problem the Evaluator never ran on", () => {
@@ -135,12 +157,16 @@ describe("listEvaluationFreshness", () => {
 
     const never = problem();
 
+    const refused = problem();
+    evaluatorCall(refused, at(30), "refused_budget");
+
     const all = listEvaluationFreshness(db);
-    expect(all.get(fresh)).toEqual({ stale: false, failedAt: null });
-    expect(all.get(stale)).toEqual({ stale: true, failedAt: null });
-    expect(all.get(failed)).toEqual({ stale: false, failedAt: at(20) });
-    expect(all.get(never)).toEqual({ stale: false, failedAt: null });
-    for (const id of [fresh, stale, failed, never]) expect(all.get(id)).toEqual(evaluationFreshness(db, id));
+    expect(all.get(fresh)).toEqual({ stale: false, failedAt: null, refusal: null });
+    expect(all.get(stale)).toEqual({ stale: true, failedAt: null, refusal: null });
+    expect(all.get(failed)).toEqual({ stale: false, failedAt: at(20), refusal: null });
+    expect(all.get(never)).toEqual({ stale: false, failedAt: null, refusal: null });
+    expect(all.get(refused)).toEqual({ stale: false, failedAt: at(30), refusal: "budget" });
+    for (const id of [fresh, stale, failed, never, refused]) expect(all.get(id)).toEqual(evaluationFreshness(db, id));
   });
 });
 
@@ -151,10 +177,18 @@ describe("failedAtLabel", () => {
   });
 });
 
+describe("notEvaluatedLabel", () => {
+  it("says why the Evaluator didn't run", () => {
+    expect(notEvaluatedLabel("budget")).toBe("Not evaluated (budget reached)");
+    expect(notEvaluatedLabel("off")).toBe("Not evaluated (Evaluator off)");
+  });
+});
+
 describe("isFresh", () => {
   it("is fresh only when neither stale nor failed", () => {
-    expect(isFresh({ stale: false, failedAt: null })).toBe(true);
-    expect(isFresh({ stale: true, failedAt: null })).toBe(false);
-    expect(isFresh({ stale: false, failedAt: at(1) })).toBe(false);
+    expect(isFresh({ stale: false, failedAt: null, refusal: null })).toBe(true);
+    expect(isFresh({ stale: true, failedAt: null, refusal: null })).toBe(false);
+    expect(isFresh({ stale: false, failedAt: at(1), refusal: null })).toBe(false);
+    expect(isFresh({ stale: false, failedAt: at(1), refusal: "off" })).toBe(false);
   });
 });

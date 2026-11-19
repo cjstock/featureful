@@ -7,6 +7,7 @@ import { getProblem, listEvidence } from "@/lib/problems";
 import { STATUS_LABELS } from "@/lib/statuses";
 import { getBrief } from "@/lib/brief-writer";
 import { latestEvaluationCall } from "@/lib/ai-calls";
+import { disabledReason } from "@/lib/ai-controls";
 import { evaluationFreshness } from "@/lib/evaluation-freshness";
 import { FreshnessNotice } from "@/components/evaluation-freshness";
 import { AiCallLine } from "@/components/ai-call-line";
@@ -77,7 +78,12 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
           <CardContent className="space-y-3">
             {problem.decisionNote && <p className="whitespace-pre-wrap text-sm">{problem.decisionNote}</p>}
             {isPm(person) && (
-              <StatusChangeForm problemId={problem.id} status={problem.status} note={problem.decisionNote} />
+              <StatusChangeForm
+                problemId={problem.id}
+                status={problem.status}
+                note={problem.decisionNote}
+                draftDisabledReason={disabledReason(db, "decision_note")}
+              />
             )}
           </CardContent>
         )}
@@ -93,7 +99,7 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
             </CardDescription>
             {isPm(person) && (
               <CardAction>
-                <ReevaluateButton problemId={problem.id} />
+                <ReevaluateButton problemId={problem.id} disabledReason={disabledReason(db, "evaluator")} />
               </CardAction>
             )}
           </CardHeader>
@@ -114,7 +120,14 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
         </Card>
       )}
 
-      {internal && <DecisionBrief problemId={problem.id} brief={getBrief(db, problem.id)} viewer={person} />}
+      {internal && (
+        <DecisionBrief
+          problemId={problem.id}
+          brief={getBrief(db, problem.id)}
+          viewer={person}
+          disabledReason={isPm(person) ? disabledReason(db, "brief") : null}
+        />
+      )}
 
       <Card>
         <CardHeader>

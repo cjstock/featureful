@@ -4,7 +4,8 @@ import { generateText, NoObjectGeneratedError, Output, type LanguageModel } from
 import { z } from "zod";
 import type { Db } from "@/db";
 import { aiCalls, type AiCallOutcome, type AiCallSource, type AiRelatedType, type CallableAiModule } from "@/db/schema";
-import { CLAUDE_MODEL, MODEL_PRICES, type ModelPrices } from "./config";
+import { AI_MODULE_NAMES, appSpendToday, isModuleOn } from "./ai-controls";
+import { aiDailyBudgetUsd, CLAUDE_MODEL, MODEL_PRICES, type ModelPrices } from "./config";
 
 /**
  * The one AI call seam. Every AI call goes through `aiGenerate`, the only code allowed to import
@@ -32,6 +33,8 @@ export type AiCaller = {
   /** Defaults to the configured Claude model. Tests and offline estimates pass a stand-in. */
   model?: AiModel;
   meter?: AiMeter;
+  /** Now, for the AI call's time and today's (UTC) budget. Defaults to the system clock; tests inject one. */
+  clock?: () => Date;
 };
 
 /** An app AI call made on behalf of the current person. */
@@ -62,6 +65,28 @@ export type TokenUsage = {
 
 const NO_TOKENS: TokenUsage = { input: { noCache: 0, cacheRead: 0, cacheWrite: 0 }, output: 0 };
 const PER_TOKEN = 1 / 1_000_000;
+
+/**
+ * An app AI call refused before it was sent, because the daily budget would be crossed
+ * (`reason: "budget"`) or the module is switched off (`"off"`). Recorded as `refused_budget` or
+ * `refused_off`; callers degrade instead of failing.
+ */
+export class AiRefusal extends Error {
+  constructor(
+    readonly reason: "budget" | "off",
+    readonly module: CallableAiModule,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AiRefusal";
+  }
+}
+
+/**
+ * Worst-case cost of app AI calls sent and not yet answered, per database, so concurrent calls
+ * (e.g. "Re-evaluate all") can't overspend the budget between them.
+ */
+const inFlightUsd = new WeakMap<Db, number>();
 
 /** The AI call recorded for each error `aiGenerate` threw (the error itself is rethrown unchanged). */
 const recordedFailures = new WeakMap<object, { id: number; outcome: AiCallOutcome }>();
@@ -130,15 +155,24 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
 
 /**
  * Make one structured-output AI call and record it. Returns the parsed output and the AI call's
- * id and prompt version. On any failure (a model with no price, refused by the meter, an API
- * error, or output that doesn't fit `schema`) the AI call is still recorded and the error is
- * rethrown unchanged. If the row itself can't be written after a failure, that is logged and the
- * original error is still the one thrown. A sent call is always reported to the meter.
+ * id and prompt version.
+ *
+ * An `app` call is checked against the AI controls first, and never sent if it fails them: a
+ * switched-off module is recorded as `refused_off`, and a call whose worst case (prompt chars ÷ 4
+ * × input price + the output cap × output price) would cross today's (UTC) remaining budget, as
+ * `refused_budget`, both throwing an `AiRefusal`. Calls still in flight count against the budget.
+ * Seed and eval calls skip these checks; they keep their own meters.
+ *
+ * On any failure (refused, a model with no price, refused by the meter, an API error, or output
+ * that doesn't fit `schema`) the AI call is still recorded and the error is rethrown unchanged.
+ * If the row itself can't be written after a failure, that is logged and the original error is
+ * still the one thrown. A sent call is always reported to the meter.
  */
 export async function aiGenerate<S extends z.ZodType>(
   params: AiGenerateParams<S>,
 ): Promise<{ output: z.infer<S>; aiCall: AiCallRef }> {
   const { db, module, related, system, prompt, schema, maxOutputTokens, source, person, meter } = params;
+  const now = params.clock ?? (() => new Date());
   const model = params.model ?? claude();
   const prices: ModelPrices | undefined = MODEL_PRICES[model.modelId];
   const version = promptVersion(system);
@@ -151,6 +185,7 @@ export async function aiGenerate<S extends z.ZodType>(
     const id = db
       .insert(aiCalls)
       .values({
+        time: now(),
         module,
         model: model.modelId,
         promptVersion: version,
@@ -187,19 +222,62 @@ export async function aiGenerate<S extends z.ZodType>(
     throw error;
   };
 
+  // The off switch and the daily budget are the app's: seed and eval runs keep their own meters.
+  const app = source === "app";
+  if (app) {
+    let on: boolean;
+    try {
+      on = isModuleOn(db, module);
+    } catch (error) {
+      return fail("error", error); // can't read the switch: don't send
+    }
+    if (!on) return fail("refused_off", new AiRefusal("off", module, `The ${AI_MODULE_NAMES[module]} is switched off`));
+  }
+
   if (!prices) {
     return fail("error", new Error(`No price for model ${model.modelId} in src/lib/config.ts; refusing an unmetered AI call.`));
   }
   const priced = prices;
 
-  if (meter) {
-    let worstCase: number;
+  let worstCase = 0;
+  if (meter || app) {
     try {
       const promptChars = system.length + prompt.length + JSON.stringify(z.toJSONSchema(schema)).length;
       worstCase = worstCaseCost(promptChars, maxOutputTokens, priced);
     } catch (error) {
       return fail("error", error);
     }
+  }
+
+  if (app) {
+    let budget: number;
+    try {
+      budget = aiDailyBudgetUsd();
+    } catch (error) {
+      return fail("refused_budget", new AiRefusal("budget", module, errorMessage(error)));
+    }
+    // From here to the reservation below is synchronous, so concurrent calls can't both see the
+    // same remaining budget.
+    let committed: number;
+    try {
+      committed = appSpendToday(db, now()) + (inFlightUsd.get(db) ?? 0);
+    } catch (error) {
+      return fail("error", error); // can't read today's spend: don't send
+    }
+    if (committed + worstCase > budget) {
+      const left = Math.max(0, budget - committed);
+      return fail(
+        "refused_budget",
+        new AiRefusal(
+          "budget",
+          module,
+          `AI budget reached: this ${AI_MODULE_NAMES[module]} call could cost up to $${worstCase.toFixed(4)} and $${left.toFixed(4)} of today's $${budget.toFixed(2)} is left. It resets at 00:00 UTC.`,
+        ),
+      );
+    }
+  }
+
+  if (meter) {
     try {
       meter.beforeCall(worstCase);
     } catch (error) {
@@ -207,31 +285,36 @@ export async function aiGenerate<S extends z.ZodType>(
     }
   }
 
-  const started = performance.now();
-  let result;
+  if (app) inFlightUsd.set(db, (inFlightUsd.get(db) ?? 0) + worstCase);
   try {
-    result = await generateText({
-      model,
-      system,
-      prompt,
-      output: Output.object({ schema }),
-      maxOutputTokens,
-      maxRetries: 0,
-    });
-  } catch (error) {
-    const latencyMs = performance.now() - started;
-    if (NoObjectGeneratedError.isInstance(error)) {
-      const usage = toTokenUsage(error.usage);
-      meter?.afterCall(aiCallCost(usage, priced));
-      return fail("parse_failed", error, { usage, latencyMs, output: error.text ?? null, error: error.message });
+    const started = performance.now();
+    let result;
+    try {
+      result = await generateText({
+        model,
+        system,
+        prompt,
+        output: Output.object({ schema }),
+        maxOutputTokens,
+        maxRetries: 0,
+      });
+    } catch (error) {
+      const latencyMs = performance.now() - started;
+      if (NoObjectGeneratedError.isInstance(error)) {
+        const usage = toTokenUsage(error.usage);
+        meter?.afterCall(aiCallCost(usage, priced));
+        return fail("parse_failed", error, { usage, latencyMs, output: error.text ?? null, error: error.message });
+      }
+      meter?.afterCall(0);
+      return fail("error", error, { latencyMs });
     }
-    meter?.afterCall(0);
-    return fail("error", error, { latencyMs });
+    const usage = toTokenUsage(result.usage);
+    meter?.afterCall(aiCallCost(usage, priced));
+    const aiCall = record("ok", { usage, latencyMs: performance.now() - started, output: result.text });
+    return { output: result.output as z.infer<S>, aiCall };
+  } finally {
+    if (app) inFlightUsd.set(db, (inFlightUsd.get(db) ?? 0) - worstCase);
   }
-  const usage = toTokenUsage(result.usage);
-  meter?.afterCall(aiCallCost(usage, priced));
-  const aiCall = record("ok", { usage, latencyMs: performance.now() - started, output: result.text });
-  return { output: result.output as z.infer<S>, aiCall };
 }
 
 /**

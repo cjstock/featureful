@@ -40,3 +40,24 @@ export const ESCALATION = {
   /** Seeds the spot-check sample, so a decision's sampling is stable. Changing it re-draws the sample. */
   spotCheckSalt: "featureful-spot-check-v1",
 } as const;
+
+/** The daily app AI budget when `AI_DAILY_BUDGET_USD` isn't set. */
+export const DEFAULT_AI_DAILY_BUDGET_USD = 2;
+
+/**
+ * The daily budget for `app` AI calls, in USD, from `AI_DAILY_BUDGET_USD` (default $2). It resets
+ * at 00:00 UTC; seed and eval runs keep their own per-run caps. Read on every AI call, so a change
+ * applies without a restart. Throws if the variable is set to anything but a non-negative amount.
+ */
+export function aiDailyBudgetUsd(): number {
+  const raw = process.env.AI_DAILY_BUDGET_USD?.trim();
+  if (!raw) return DEFAULT_AI_DAILY_BUDGET_USD;
+  const budget = Number(raw);
+  if (!Number.isFinite(budget) || budget < 0) {
+    throw new Error(`AI_DAILY_BUDGET_USD must be a non-negative amount in USD, not "${raw}"`);
+  }
+  return budget;
+}
+
+/** Request submissions: at most `max` per person in any rolling `windowMs`. */
+export const REQUEST_RATE_LIMIT = { max: 10, windowMs: 60 * 60 * 1000 } as const;

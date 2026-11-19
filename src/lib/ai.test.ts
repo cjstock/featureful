@@ -216,10 +216,23 @@ describe("aiGenerate", () => {
     };
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     db.$client.close();
+    // An eval run: an app call would stop earlier, at the AI controls (next test).
+    const evalRun = { ...base(), source: "eval" as const };
 
-    expect(await aiGenerate({ ...base(), model }).catch((error) => error)).toBe(failure);
-    expect(await aiGenerate({ ...base(), model, meter: refusing }).catch((error) => error)).toBe(refusal);
+    expect(await aiGenerate({ ...evalRun, model }).catch((error) => error)).toBe(failure);
+    expect(await aiGenerate({ ...evalRun, model, meter: refusing }).catch((error) => error)).toBe(refusal);
     expect(logged).toHaveBeenCalledTimes(2);
+    logged.mockRestore();
+  });
+
+  it("doesn't send an app call when the AI controls (off switch, today's spend) can't be read", async () => {
+    const model = answering('{"answer":"yes"}');
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    db.$client.close();
+
+    await expect(aiGenerate({ ...base(), model })).rejects.toThrow(/not open/);
+
+    expect(model.doGenerateCalls).toHaveLength(0);
     logged.mockRestore();
   });
 
@@ -230,8 +243,9 @@ describe("aiGenerate", () => {
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     db.$client.close();
 
-    await expect(aiGenerate({ ...base(), model, meter })).rejects.toThrow();
-    await expect(aiGenerate({ ...base(), model: answering("not json"), meter })).rejects.toThrow();
+    const evalRun = { ...base(), source: "eval" as const };
+    await expect(aiGenerate({ ...evalRun, model, meter })).rejects.toThrow();
+    await expect(aiGenerate({ ...evalRun, model: answering("not json"), meter })).rejects.toThrow();
 
     expect(costs).toEqual([expect.closeTo(0.0043, 8), expect.closeTo(0.0043, 8)]);
     logged.mockRestore();

@@ -1,6 +1,6 @@
 import { eq, max, sql } from "drizzle-orm";
 import type { Db } from "@/db";
-import { aiCalls, problems, requests } from "@/db/schema";
+import { aiCalls, problems, requests, type AiCallOutcome } from "@/db/schema";
 import { evaluatorCallsAbout, newestAiCallFirst } from "@/lib/ai-calls";
 
 /** Whether a Problem's evaluation still reflects it (see "Freshness" in the v2 spec). */
@@ -9,9 +9,18 @@ export interface EvaluationFreshness {
   stale: boolean;
   /** When the latest Evaluator AI call for this Problem didn't return ok; null if it did, or never ran. */
   failedAt: Date | null;
+  /**
+   * When that latest call was refused rather than failed: over the daily budget, or the Evaluator
+   * switched off. Shown as "Not evaluated (budget reached / Evaluator off)".
+   */
+  refusal: EvaluationRefusal | null;
 }
 
-const FRESH: EvaluationFreshness = { stale: false, failedAt: null };
+export type EvaluationRefusal = "budget" | "off";
+
+const FRESH: EvaluationFreshness = { stale: false, failedAt: null, refusal: null };
+
+const REFUSALS: Partial<Record<AiCallOutcome, EvaluationRefusal>> = { refused_budget: "budget", refused_off: "off" };
 
 /** Neither stale nor failed: nothing to show. */
 export function isFresh({ stale, failedAt }: EvaluationFreshness): boolean {
@@ -54,8 +63,8 @@ function freshnessByProblemId(db: Db, problemId?: number): Map<number, Evaluatio
       .where(evaluatorCallsAbout(problemId)),
   );
   const latestCalls = db.with(ranked).select().from(ranked).where(eq(ranked.rank, 1)).all();
-  const failedAt = new Map(
-    latestCalls.flatMap((c) => (c.problemId !== null && c.outcome !== "ok" ? [[c.problemId, c.time] as const] : [])),
+  const failed = new Map(
+    latestCalls.flatMap((c) => (c.problemId !== null && c.outcome !== "ok" ? [[c.problemId, c] as const] : [])),
   );
 
   return new Map(
@@ -63,7 +72,8 @@ function freshnessByProblemId(db: Db, problemId?: number): Map<number, Evaluatio
       id,
       {
         stale: Boolean(evaluatedAt && newestEvidence && new Date(newestEvidence) > evaluatedAt),
-        failedAt: failedAt.get(id) ?? null,
+        failedAt: failed.get(id)?.time ?? null,
+        refusal: REFUSALS[failed.get(id)?.outcome ?? "ok"] ?? null,
       },
     ]),
   );
@@ -81,4 +91,14 @@ const utcTime = new Intl.DateTimeFormat("en-GB", {
 /** "Evaluation failed at 21:05 UTC". */
 export function failedAtLabel(failedAt: Date): string {
   return `Evaluation failed at ${utcTime.format(failedAt)} UTC`;
+}
+
+const NOT_EVALUATED: Record<EvaluationRefusal, string> = {
+  budget: "Not evaluated (budget reached)",
+  off: "Not evaluated (Evaluator off)",
+};
+
+/** "Not evaluated (budget reached)" or "Not evaluated (Evaluator off)". */
+export function notEvaluatedLabel(refusal: EvaluationRefusal): string {
+  return NOT_EVALUATED[refusal];
 }

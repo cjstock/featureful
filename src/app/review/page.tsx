@@ -8,6 +8,7 @@ import { isPm } from "@/lib/roles";
 import { getMatchReview } from "@/lib/match-review-app";
 import { loadInbox } from "@/lib/review-inbox-data";
 import { cn } from "@/lib/utils";
+import { AiBudgetBanner } from "@/components/ai-budget-banner";
 import { EscalationInbox } from "@/components/escalation-inbox";
 import { InboxMetrics } from "@/components/inbox-metrics";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +51,7 @@ export default async function ReviewPage({
       ) : (
         <>
           <InboxMetrics />
+          <AiBudgetBanner />
           <EscalationInbox
             items={loadInbox(db, review)}
             problems={db.select({ id: problems.id, title: problems.title }).from(problems).orderBy(asc(problems.title)).all()}

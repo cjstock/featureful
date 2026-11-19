@@ -56,6 +56,9 @@ export const RETIRED_AI_MODULES = ["boundary_note"] as const satisfies readonly 
 /** The modules `aiGenerate` accepts: every AI module except the retired ones. */
 export type CallableAiModule = Exclude<AiModule, (typeof RETIRED_AI_MODULES)[number]>;
 
+/** Every callable AI module, in display order (AI controls on `/strategy`). */
+export const CALLABLE_AI_MODULES = ["matcher", "evaluator", "decision_note", "brief"] as const satisfies readonly CallableAiModule[];
+
 /** What started an AI call: the app, the seed script, or an eval run. */
 export const AI_CALL_SOURCES = ["app", "seed", "eval"] as const;
 export type AiCallSource = (typeof AI_CALL_SOURCES)[number];
@@ -184,6 +187,29 @@ export const aiCalls = sqliteTable("ai_calls", {
 });
 
 /**
+ * Off switch: one row per callable AI module, on by default. A PM flips it in AI controls on
+ * `/strategy`; an app AI call to a switched-off module is refused (`refused_off`). A module with
+ * no row is on.
+ */
+export const aiModuleSettings = sqliteTable("ai_module_settings", {
+  module: text("module", { enum: AI_MODULES }).primaryKey(),
+  on: integer("on", { mode: "boolean" }).notNull().default(true),
+});
+
+/** Every flip of an off switch: which module, on or off, who, and when. */
+export const aiModuleFlips = sqliteTable("ai_module_flips", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  module: text("module", { enum: AI_MODULES }).notNull(),
+  on: integer("on", { mode: "boolean" }).notNull(),
+  personId: integer("person_id")
+    .notNull()
+    .references(() => people.id),
+  at: integer("at", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+/**
  * Matching decision: what the Matcher proposed for a Request and what the
  * submitter chose, with its Escalation reasons. One per Request. Review fields are null until a
  * PM gives a Match review.
@@ -247,3 +273,4 @@ export type NewRequest = typeof requests.$inferInsert;
 export type Support = typeof supports.$inferSelect;
 export type MatchingDecision = typeof matchingDecisions.$inferSelect;
 export type AiCall = typeof aiCalls.$inferSelect;
+export type AiModuleFlip = typeof aiModuleFlips.$inferSelect;
