@@ -6,7 +6,7 @@
 
 **Blocked by:** 04, 06
 
-**Status:** ready-for-agent (blocked: 04 is parked, needs-human)
+**Status:** done ([#10](https://github.com/cjstock/featureful/pull/10))
 
 - [ ] Left pane: groups by strongest reason in rank order, with counts and items oldest first. The last group is "Not escalated" (Auto-accepted, still reviewable). Done items show struck through.
 - [ ] Detail pane, from top to bottom:
