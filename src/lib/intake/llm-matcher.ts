@@ -101,5 +101,6 @@ export const llmMatcher: Matcher = async (request, problems, examples) => {
             reason: output.reason,
           },
     newProblem: output.newProblem,
+    reason: output.reason,
   };
 };

@@ -94,3 +94,20 @@ npm run test:watch  # Vitest in watch mode
 npm run typecheck   # tsc --noEmit
 npm run lint        # ESLint
 ```
+
+### Matcher eval
+
+`npm run eval` replays the seed Requests through intake and runs the
+fixed-state cases in `evals/matcher/cases.ts` against the real Matcher, scores
+them, and gates the result against `evals/baseline.json`. It costs money
+(about 40 Matcher calls), so it is never part of `npm test`; it estimates its
+cost first and stops at 60 AI calls or $1 per run.
+
+```bash
+npm run eval -- --estimate         # offline cost estimate, no AI calls
+npm run eval                       # live run, gated against the baseline
+npm run eval -- --write-baseline   # live run that rewrites evals/baseline.json
+```
+
+In CI the `eval` job runs it only when AI files change. Change the baseline only
+in a Yellow-or-higher-lane PR.
