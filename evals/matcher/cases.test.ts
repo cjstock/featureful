@@ -6,7 +6,7 @@ const valid = {
   kind: "regression",
   must: true,
   source: "Match review #12",
-  problems: [{ id: 1, title: "Export roasts", need: "I need my roast logs out.", boundaryNote: null }],
+  problems: [{ id: 1, title: "Export roasts", need: "I need my roast logs out." }],
   request: { title: "CSV please", description: "All my roasts as CSV." },
   expected: 1,
 };

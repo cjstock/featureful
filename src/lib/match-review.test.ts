@@ -1,13 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb, type Db } from "@/db";
 import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
-import { createMatchReview, type BoundaryNoteInput, type BoundaryNoteWriter } from "@/lib/match-review";
-import { getProblem } from "@/lib/problems";
-
-/** Fake AI dependency: returns the current note unchanged. */
-const fakeWriter: BoundaryNoteWriter = async ({ currentNote }) => currentNote ?? "";
+import { createMatchReview } from "@/lib/match-review";
 
 const NEW_PROBLEM = { title: "Log cupping sessions", need: "I need to record how a coffee tasted." };
 
@@ -45,7 +41,7 @@ function setup() {
     return intake.confirm(draft, proposal, decision, alex.id);
   }
 
-  return { db, alex, sam, flavour, submit, review: createMatchReview({ db, boundaryNoteWriter: fakeWriter }) };
+  return { db, alex, sam, flavour, submit, review: createMatchReview({ db }) };
 }
 
 describe("Match review queue", () => {
@@ -123,7 +119,7 @@ describe("Match review queue", () => {
     const proposal = await intake.propose(draft);
     intake.confirm(draft, proposal, { createProblem: proposal.newProblem }, alex.id);
 
-    expect(createMatchReview({ db, boundaryNoteWriter: fakeWriter }).listQueue()).toMatchObject([
+    expect(createMatchReview({ db }).listQueue()).toMatchObject([
       { proposal: { match: null, newProblem: NEW_PROBLEM }, submitterChoice: "no_match" },
     ]);
   });
@@ -132,7 +128,7 @@ describe("Match review queue", () => {
 /** Proposes no match; each test's `place` decides where the Request goes. */
 const noMatch: Matcher = async () => ({ match: null, newProblem: NEW_PROBLEM });
 
-function setupReview(boundaryNoteWriter: BoundaryNoteWriter = fakeWriter) {
+function setupReview() {
   const db = createDb(":memory:");
   const [alex, priya, sam] = db
     .insert(people)
@@ -152,7 +148,7 @@ function setupReview(boundaryNoteWriter: BoundaryNoteWriter = fakeWriter) {
     .returning()
     .all();
   const intake = createIntake({ db, matcher: noMatch });
-  const review = createMatchReview({ db, boundaryNoteWriter });
+  const review = createMatchReview({ db });
 
   /** Submit a Request through Intake onto `problemId`; returns its Matching decision. */
   async function place(personId: number, problemId: number, title = "Cupping log") {
@@ -355,99 +351,5 @@ describe("Match review: refusals", () => {
     expect(() => review.review(decision.id, "move", { targetProblemId: 999 }, sam.id)).toThrow();
     expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
     expect(review.countQueue()).toBe(1);
-  });
-});
-
-/** Fake BoundaryNoteWriter that records its inputs and writes a note naming the Problem. */
-function recordingWriter() {
-  const calls: BoundaryNoteInput[] = [];
-  const writer: BoundaryNoteWriter = async (input) => {
-    calls.push(input);
-    return `Includes what fits ${input.problem.title}.`;
-  };
-  return { calls, writer };
-}
-
-const noteOf = (db: Db, problemId: number) => getProblem(db, problemId)?.problem.boundaryNote;
-
-describe("Match review: Boundary note distillation", () => {
-  it("after a Move, revises the note of the source and destination from the review", async () => {
-    const { calls, writer } = recordingWriter();
-    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview(writer);
-    db.update(problems).set({ boundaryNote: "Includes grind settings." }).where(eq(problems.id, grind.id)).run();
-    const decision = await place(alex.id, grind.id);
-    await place(priya.id, grind.id, "Grind notes"); // keeps the source alive
-    review.review(decision.id, "move", { targetProblemId: flavour.id, note: "Cupping is flavour." }, sam.id);
-
-    await review.distilBoundaryNotes(decision.id);
-
-    expect(calls).toEqual([
-      {
-        problem: { id: grind.id, title: grind.title, need: grind.need },
-        currentNote: "Includes grind settings.",
-        review: {
-          request: { title: "Cupping log", description: "Cupping log, please." },
-          verdict: "move",
-          fromProblem: { id: grind.id, title: grind.title },
-          toProblem: { id: flavour.id, title: flavour.title },
-          note: "Cupping is flavour.",
-        },
-      },
-      expect.objectContaining({ problem: expect.objectContaining({ id: flavour.id }), currentNote: null }),
-    ]);
-    expect(noteOf(db, grind.id)).toBe("Includes what fits Dial in grind size.");
-    expect(noteOf(db, flavour.id)).toBe("Includes what fits Compare roast flavour.");
-  });
-
-  it("Confirm without a note makes no call; Confirm with a note revises the Request's Problem", async () => {
-    const { calls, writer } = recordingWriter();
-    const { db, alex, sam, grind, review, place } = setupReview(writer);
-    const silent = await place(alex.id, grind.id);
-    const noted = await place(alex.id, grind.id, "Grind notes");
-    review.review(silent.id, "confirm", {}, sam.id);
-    review.review(noted.id, "confirm", { note: "Grind memory, not grinder care." }, sam.id);
-
-    await review.distilBoundaryNotes(silent.id);
-    expect(calls).toEqual([]);
-
-    await review.distilBoundaryNotes(noted.id);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      problem: { id: grind.id },
-      review: { verdict: "confirm", note: "Grind memory, not grinder care." },
-    });
-    expect(noteOf(db, grind.id)).toBe("Includes what fits Dial in grind size.");
-  });
-
-  it("skips a source deleted by the review and distils only the destination", async () => {
-    const { calls, writer } = recordingWriter();
-    const { alex, sam, flavour, grind, review, place } = setupReview(writer);
-    const decision = await place(alex.id, grind.id);
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
-
-    await review.distilBoundaryNotes(decision.id);
-
-    expect(calls.map((c) => c.problem.id)).toEqual([flavour.id]);
-    expect(calls[0].review).toMatchObject({ fromProblem: null, toProblem: { title: flavour.title } });
-  });
-
-  it("a failed call keeps that Problem's existing note, still revises the others, and keeps the review", async () => {
-    const writer: BoundaryNoteWriter = async ({ problem }) => {
-      if (problem.title === "Dial in grind size") throw new Error("AI down");
-      return "Includes flavour.";
-    };
-    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview(writer);
-    db.update(problems).set({ boundaryNote: "Includes grind settings." }).where(eq(problems.id, grind.id)).run();
-    const decision = await place(alex.id, grind.id);
-    await place(priya.id, grind.id, "Grind notes");
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-
-    await expect(review.distilBoundaryNotes(decision.id)).resolves.toBeUndefined();
-
-    errors.mockRestore();
-    expect(noteOf(db, grind.id)).toBe("Includes grind settings.");
-    expect(noteOf(db, flavour.id)).toBe("Includes flavour.");
-    expect(review.listReviewed()[0].review).toMatchObject({ verdict: "move" });
   });
 });

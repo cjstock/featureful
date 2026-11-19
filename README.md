@@ -81,14 +81,13 @@ or splitting relocates the Request and its Support and re-evaluates the
 affected Problems.
 
 The Matcher learns from these reviews in its prompt (ADR 0002): it sees up to
-20 recent Matching examples, corrections first, and each Problem's Boundary
-note, a short "Includes … Does not include …" statement that the AI distils
-from every Move, Split, or Confirm with a note. Internal stakeholders see the
-Boundary note on the Problem page, and PMs can edit it there.
+20 recent Matching examples, corrections first. (Boundary notes, short
+per-Problem statements distilled from reviews, were cut after an ablation
+showed no gain over the examples alone: ADR 0003.)
 
 ## AI calls
 
-Every AI call (the Matcher, the Evaluator and the three writers) goes through
+Every AI call (the Matcher, the Evaluator and the two writers) goes through
 `aiGenerate` in `src/lib/ai.ts`, the only file allowed to import the AI SDK
 (ESLint enforces it). Each attempt is sent once, without retries, with an
 output cap per module (`AI_MAX_OUTPUT_TOKENS` in `src/lib/config.ts`), and

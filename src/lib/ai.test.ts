@@ -147,7 +147,7 @@ describe("aiGenerate", () => {
   });
 
   it("stores the Problems shown to the Matcher", async () => {
-    const shown = [{ id: 1, title: "Repeat a brew", need: "I need to repeat a brew.", boundaryNote: null }];
+    const shown = [{ id: 1, title: "Repeat a brew", need: "I need to repeat a brew." }];
     await aiGenerate({ ...base(), module: "matcher", related: null, shownProblems: shown, model: answering('{"answer":"x"}') });
     expect(db.select().from(aiCalls).get()).toMatchObject({ module: "matcher", relatedType: null, shownProblems: shown });
   });

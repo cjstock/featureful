@@ -8,7 +8,6 @@ import { idSchema, message, type Result } from "@/lib/action-result";
 import { appCaller } from "@/lib/ai";
 import { tryEvaluateProblem } from "@/lib/evaluator";
 import { requireRole } from "@/lib/identity";
-import { setBoundaryNote } from "@/lib/match-review";
 import { getMatchReview } from "@/lib/match-review-app";
 
 const note = z.string().trim().max(2000).optional();
@@ -29,46 +28,25 @@ const reviewSchema = z.discriminatedUnion("verdict", [
 export type MatchReviewInput = z.input<typeof reviewSchema>;
 
 /**
- * PM only: give a Match review (Confirm, Move, or Split). In the background, the review is
- * distilled into the affected Problems' Boundary notes and, after a Move or Split, the affected
- * Problems are re-evaluated.
+ * PM only: give a Match review (Confirm, Move, or Split). After a Move or Split, the affected
+ * Problems are re-evaluated in the background.
  */
 export async function reviewMatch(decisionId: number, input: MatchReviewInput): Promise<Result> {
   try {
     const pm = await requireRole("pm");
     const { verdict, ...opts } = reviewSchema.parse(input);
-    const matchReview = getMatchReview(pm.id);
+    const matchReview = getMatchReview();
     const id = idSchema.parse(decisionId);
     const affected = matchReview.review(id, verdict, opts, pm.id);
-    after(async () => {
-      // Never throws; Confirm without a note makes no AI call.
-      await matchReview.distilBoundaryNotes(id);
-      if (verdict !== "confirm") {
+    if (verdict !== "confirm") {
+      after(async () => {
         for (const problemId of affected) await tryEvaluateProblem(getDb(), problemId, appCaller(pm.id));
-      }
-    });
+      });
+    }
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (error) {
     console.error("reviewMatch failed", error);
-    return { ok: false, error: message(error) };
-  }
-}
-
-const boundaryNoteSchema = z.string().trim().max(1000);
-
-/** PM only: edit a Problem's Boundary note directly (blank clears it). */
-export async function updateBoundaryNote(problemId: number, note: string): Promise<Result> {
-  try {
-    await requireRole("pm");
-    const id = idSchema.parse(problemId);
-    if (!setBoundaryNote(getDb(), id, boundaryNoteSchema.parse(note))) {
-      return { ok: false, error: "That Problem no longer exists" };
-    }
-    revalidatePath(`/problems/${id}`);
-    return { ok: true };
-  } catch (error) {
-    console.error("updateBoundaryNote failed", error);
     return { ok: false, error: message(error) };
   }
 }

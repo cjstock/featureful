@@ -1,4 +1,4 @@
-import type { AiModule } from "@/db/schema";
+import type { CallableAiModule } from "@/db/schema";
 
 /** The one Claude model every AI call uses. */
 export const CLAUDE_MODEL = "claude-sonnet-5-5";
@@ -20,7 +20,6 @@ export const MODEL_PRICES: Record<string, ModelPrices> = {
 export const AI_MAX_OUTPUT_TOKENS = {
   matcher: 1_000,
   evaluator: 1_500,
-  boundary_note: 400,
   decision_note: 800,
   brief: 2_500,
-} as const satisfies Record<AiModule, number>;
+} as const satisfies Record<CallableAiModule, number>;

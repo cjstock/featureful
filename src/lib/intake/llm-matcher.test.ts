@@ -21,7 +21,6 @@ const PROBLEMS: ProblemSummary[] = [
     id: 1,
     title: "Get roast data out",
     need: "I need my roast logs in other tools.",
-    boundaryNote: "Covers one-off exports; not live syncing.",
   },
 ];
 
@@ -71,9 +70,8 @@ describe("the Matcher's prompt delimits Customer text", () => {
     );
   });
 
-  it("leaves PM-written text untagged: Boundary notes and review notes", async () => {
+  it("leaves PM-written text untagged: review notes", async () => {
     const { prompt } = await matcherCall();
-    expect(prompt).toContain("\n  Boundary note: Covers one-off exports; not live syncing.");
     expect(prompt).toContain("\nPM note: Exports of any format belong together.");
   });
 
