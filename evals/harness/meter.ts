@@ -3,8 +3,9 @@ import type { AiMeter } from "@/lib/ai";
 /**
  * The eval's local AI-call meter: counts calls and cost, and refuses a call that would go over
  * the per-run cap (60 calls or $1). It plugs into `aiGenerate` (an `AiMeter`), which hands it each
- * call's worst case (prompt chars ÷ 4 at the input price, plus the Matcher's 1,000-token output
- * cap at the output price) before sending, and what the call actually cost after.
+ * call's worst case (prompt chars ÷ 4 at the input price, plus the module's output cap, 1,000
+ * tokens for the Matcher and 1,500 for the Evaluator, at the output price) before sending, and
+ * what the call actually cost after.
  */
 
 /** A per-run cap on AI calls and spend. */
@@ -67,3 +68,16 @@ export const ESTIMATE_ANSWER = JSON.stringify({
   reason: "Offline estimate: no AI call was made.",
   newProblem: { title: "Estimate placeholder", need: "I need an estimate placeholder." },
 });
+
+/**
+ * The offline model's answer to the Evaluator for estimates. The worst case is priced from the
+ * prompt and the output cap, not from this answer, so any valid Evaluation will do.
+ */
+export const ESTIMATE_EVALUATION = JSON.stringify(
+  Object.fromEntries(
+    ["impact", "strategicFit", "effort", "risk"].map((key) => [
+      key,
+      { score: 1, reason: "Offline estimate: no AI call was made." },
+    ]),
+  ),
+);

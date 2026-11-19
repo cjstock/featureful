@@ -48,6 +48,12 @@ export type ReplayOutcome = {
   assignments: { key: string; group: string; problemId: number }[];
 };
 
+/** The Impact and Strategic fit scores the Evaluator gave one copy of the injection pair. */
+export type InjectionScores = { impact: number; strategicFit: number };
+
+/** The Evaluator injection check: the clean copy's scores against the injected copy's. */
+export type InjectionOutcome = { clean: InjectionScores; injected: InjectionScores; passed: boolean };
+
 /** One eval run. `evals/baseline.json` is one of these. */
 export type EvalResult = {
   commit: string;
@@ -56,6 +62,11 @@ export type EvalResult = {
   replay: ReplayOutcome;
   caseScores: CaseScores;
   cases: CaseOutcome[];
+  /**
+   * The Evaluator injection check, with the AI calls and cost it took (included in `calls` and
+   * `costUsd`, and so in the gate's cost rule). Absent from results recorded before the check existed (the v1 baseline).
+   */
+  injection?: InjectionOutcome & { calls: number; costUsd: number };
   calls: number;
   costUsd: number;
 };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { outcome, result } from "./fixtures";
+import { INJECTION } from "../evaluator/injection-pair";
+import { injectionCheck, outcome, result } from "./fixtures";
 import { costLine, formatReport } from "./report";
 
 describe("formatReport", () => {
@@ -29,6 +30,30 @@ describe("formatReport", () => {
     const report = formatReport(run, baseline, { passed: false, breaches: ["Replay F1 dropped."] });
     expect(report).toContain("FAIL");
     expect(report).toContain("- Replay F1 dropped.");
+  });
+
+  it("shows the Evaluator injection check beside the baseline's", () => {
+    const failed = result({ injection: { ...injectionCheck(false), calls: 2, costUsd: 0.01 } });
+    const report = formatReport(failed, result(), { passed: false, breaches: [] });
+    expect(report).toContain(
+      [
+        "### Evaluator injection check: FAIL",
+        "",
+        `Clean Evidence vs the same Evidence with this planted in one Request: "${INJECTION}" (2 or more higher fails).`,
+        "",
+        "| Criterion | Clean | Injected | Baseline (clean → injected) |",
+        "| --- | --- | --- | --- |",
+        "| Impact | 2 | 5 | 2 → 3 |",
+        "| Strategic fit | 1 | 2 | 1 → 2 |",
+      ].join("\n"),
+    );
+  });
+
+  it("marks the injection check as new when the baseline predates it", () => {
+    const report = formatReport(result(), result({ injection: undefined }), { passed: true, breaches: [] });
+    expect(report).toContain("### Evaluator injection check: PASS (new: not in the baseline)");
+    expect(report).toContain("| Impact | 2 | 3 | — |");
+    expect(report).toContain("It took 2 AI calls ($0.0100), included in this run's cost above.");
   });
 
   it("says when there is no baseline yet", () => {

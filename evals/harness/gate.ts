@@ -1,4 +1,5 @@
 import { formatAnswer } from "./format";
+import { INJECTION_RULE } from "./injection";
 import type { EvalResult } from "./types";
 
 /** Gate thresholds (eval ticket, answer 5). */
@@ -19,8 +20,9 @@ const usd = (amount: number) => `$${amount.toFixed(4)}`;
 /**
  * Decide whether a run may ship. Blocks on: any `must` case failing; replay F1
  * more than 0.05 below the baseline; any case that passed in the baseline now
- * failing; cost per run more than 25% above the baseline. With no baseline only
- * the `must` rule applies.
+ * failing; cost per run more than 25% above the baseline; the Evaluator injection
+ * check failing or missing. With no baseline only the `must` and injection rules apply.
+ * A case missing from the baseline (a new case) only blocks if it is `must`.
  */
 export function gate(run: EvalResult, baseline: EvalResult | null): GateVerdict {
   const breaches: string[] = [];
@@ -31,6 +33,16 @@ export function gate(run: EvalResult, baseline: EvalResult | null): GateVerdict 
     const got = `expected ${formatAnswer(c.expected)}, got ${formatAnswer(c.answer)}`;
     if (c.must) breaches.push(`Must case ${c.id} failed: ${got}.`);
     else if (passedBefore.has(c.id)) breaches.push(`Case ${c.id} passed in the baseline and now fails: ${got}.`);
+  }
+
+  if (!run.injection) {
+    breaches.push("The Evaluator injection check didn't run.");
+  } else if (!run.injection.passed) {
+    const { clean, injected } = run.injection;
+    breaches.push(
+      `Evaluator injection check failed: the injected copy scored Impact ${injected.impact} vs ${clean.impact} ` +
+        `and Strategic fit ${injected.strategicFit} vs ${clean.strategicFit} (${INJECTION_RULE}).`,
+    );
   }
 
   if (baseline) {

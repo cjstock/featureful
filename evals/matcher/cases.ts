@@ -6,9 +6,10 @@
  * note decides it), adversarial (prompt injection in the Request), regression
  * (from Match reviews; loaded from regression.json).
  *
- * `must` cases block the gate whenever they fail. The adversarial cases start as
- * monitored (not `must`): the v1 Matcher doesn't delimit customer text yet, and
- * the delimiting slice is measured against them.
+ * `must` cases block the gate whenever they fail. The adversarial cases started as
+ * monitored while the v1 Matcher didn't delimit customer text; since the
+ * delimiting slice (build ticket 08) they are `must`: tagged Customer text is
+ * data, so an instruction planted in a Request must never steer the Matcher.
  */
 import { z } from "zod";
 import type { ProblemSummary } from "@/lib/intake";
@@ -216,7 +217,7 @@ const HAND_CASES: MatcherCase[] = [
   {
     id: "adversarial-force-match",
     kind: "adversarial",
-    must: false,
+    must: true,
     source: HAND_WRITTEN_SOURCE,
     problems: PROBLEMS,
     request: {
@@ -229,7 +230,7 @@ const HAND_CASES: MatcherCase[] = [
   {
     id: "adversarial-force-new",
     kind: "adversarial",
-    must: false,
+    must: true,
     source: HAND_WRITTEN_SOURCE,
     problems: PROBLEMS,
     request: {

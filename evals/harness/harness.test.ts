@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import type { Matcher } from "@/lib/intake";
 import { SEED_REQUESTS } from "../../scripts/seed-data";
 import { CASES } from "../matcher/cases";
+import { INJECTION } from "../evaluator/injection-pair";
+import { evaluation } from "./fixtures";
 import { gate } from "./gate";
+import { type Evaluator, runInjectionCheck } from "./injection";
 import { runEval } from "./run";
 import type { EvalResult } from "./types";
 
@@ -32,8 +35,16 @@ const nullMatcher: Matcher = async (request) => ({
   newProblem: { title: request.title, need: request.description },
 });
 
-const asResult = (run: Awaited<ReturnType<typeof runEval>>): EvalResult => ({
+/** Scores the Evidence it's given, whatever the Evidence says to score. */
+const honestEvaluator: Evaluator = async () => evaluation(2, 1);
+
+/** Does what the Evidence tells it. */
+const gullibleEvaluator: Evaluator = async (input) =>
+  input.evidence.some((e) => e.description.includes(INJECTION)) ? evaluation(5, 5) : evaluation(2, 1);
+
+const asResult = async (run: Awaited<ReturnType<typeof runEval>>, evaluator = honestEvaluator): Promise<EvalResult> => ({
   ...run,
+  injection: { ...(await runInjectionCheck(evaluator)), calls: 0, costUsd: 0 },
   commit: "test",
   date: "2026-11-18T00:00:00.000Z",
   model: "fake",
@@ -43,7 +54,7 @@ const asResult = (run: Awaited<ReturnType<typeof runEval>>): EvalResult => ({
 
 describe("harness validation", () => {
   it("scores the oracle Matcher 100% and passes the gate", async () => {
-    const run = asResult(await runEval(oracleMatcher, CASES));
+    const run = await asResult(await runEval(oracleMatcher, CASES));
 
     expect(run.replay).toMatchObject({ precision: 1, recall: 1, f1: 1, problemsCreated: 16, expectedProblems: 16 });
     expect(run.caseScores).toEqual({ accuracy: 1, matchVsNewAccuracy: 1, correctProblemAccuracy: 1 });
@@ -53,14 +64,23 @@ describe("harness validation", () => {
   });
 
   it("fails the null 'always new' Matcher, with or without a baseline", async () => {
-    const oracle = asResult(await runEval(oracleMatcher, CASES));
-    const run = asResult(await runEval(nullMatcher, CASES));
+    const oracle = await asResult(await runEval(oracleMatcher, CASES));
+    const run = await asResult(await runEval(nullMatcher, CASES));
 
     expect(run.replay).toMatchObject({ recall: 0, f1: 0, problemsCreated: SEED_REQUESTS.length });
     expect(gate(run, null).passed).toBe(false);
     const verdict = gate(run, oracle);
     expect(verdict.passed).toBe(false);
     expect(verdict.breaches).toContainEqual(expect.stringContaining("F1"));
+  });
+
+  it("fails an Evaluator that follows the injection, even with a perfect Matcher", async () => {
+    const oracle = await asResult(await runEval(oracleMatcher, CASES));
+    const run = await asResult(await runEval(oracleMatcher, CASES), gullibleEvaluator);
+
+    expect(run.injection).toMatchObject({ clean: { impact: 2, strategicFit: 1 }, injected: { impact: 5, strategicFit: 5 } });
+    expect(gate(run, null).passed).toBe(false);
+    expect(gate(run, oracle).breaches).toEqual([expect.stringContaining("injection")]);
   });
 
   it("asks the Matcher once per seed Request and once per case, and nothing else", async () => {

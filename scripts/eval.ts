@@ -1,32 +1,36 @@
 /**
  * Matcher eval: replays the seed Requests through intake and runs the fixed-state
- * cases in evals/matcher/, scores them, gates against evals/baseline.json and
- * prints a report (also appended to $GITHUB_STEP_SUMMARY in CI).
+ * cases in evals/matcher/, then the Evaluator injection check (evals/evaluator/),
+ * scores them, gates against evals/baseline.json and prints a report (also
+ * appended to $GITHUB_STEP_SUMMARY in CI).
  *
- *   npm run eval                       # live: calls the Anthropic API (~40 Matcher calls)
+ *   npm run eval                       # live: calls the Anthropic API (~40 Matcher calls, 2 Evaluator calls)
  *   npm run eval -- --estimate         # offline: estimate the live run's cost, no AI calls
  *   npm run eval -- --write-baseline   # live, then write evals/baseline.json (explicit only)
  *
- * Only the Matcher runs: no Evaluator, no writers. Every Matcher call goes through
- * `aiGenerate` with source "eval", and its AI call record goes to the run's own
- * in-memory database (never data/). Every run first estimates its worst-case cost
- * offline (each call's prompt plus a full 1,000-token answer) and refuses to start
- * if that could pass the per-run cap (60 AI calls or $1). During the run each
- * call's output is capped at the Matcher's 1,000 tokens (config), and the meter
- * refuses any call whose worst case would pass the cap. Never part of `npm test`.
+ * Only the Matcher and, for the injection check, the Evaluator run: no writers.
+ * Every call goes through `aiGenerate` with source "eval", and its AI call record
+ * goes to the run's own in-memory database (never data/). Every run first
+ * estimates its worst-case cost offline (each call's prompt plus a full answer at
+ * the module's output cap) and refuses to start if that could pass the per-run
+ * cap (60 AI calls or $1). During the run each call's output is capped (config:
+ * 1,000 tokens for the Matcher, 1,500 for the Evaluator), and the meter refuses
+ * any call whose worst case would pass the cap. Never part of `npm test`.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { createDb } from "@/db";
-import { offlineModel } from "@/lib/ai";
+import { type AiCaller, offlineModel } from "@/lib/ai";
 import { AI_MAX_OUTPUT_TOKENS, CLAUDE_MODEL, MODEL_PRICES } from "@/lib/config";
 import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { gate } from "../evals/harness/gate";
+import { evalEvaluator, runInjectionCheck } from "../evals/harness/injection";
 import {
   CapReachedError,
   createMeter,
   ESTIMATE_ANSWER,
+  ESTIMATE_EVALUATION,
   EVAL_CAP,
   worstCaseMeter,
   type Meter,
@@ -78,20 +82,33 @@ function publish(text: string) {
 async function estimate() {
   const meter = createMeter(EVAL_CAP);
   const db = createDb(":memory:");
-  const matcher = createLlmMatcher(db, {
+  const caller = (answer: string): AiCaller => ({
     source: "eval",
     person: null,
-    model: offlineModel(ESTIMATE_ANSWER),
+    model: offlineModel(answer),
     meter: worstCaseMeter(meter),
   });
-  await runEval(matcher, CASES, db);
+  await runEval(createLlmMatcher(db, caller(ESTIMATE_ANSWER)), CASES, db);
+  await runInjectionCheck(evalEvaluator(db, caller(ESTIMATE_EVALUATION)));
   return meter.totals();
 }
 
-/** The live run: the real model, metered against the cap, with AI call records in its own in-memory db. */
-function liveRun(meter: Meter) {
+/**
+ * The live run: the real model, metered against the cap, with AI call records in its own
+ * in-memory db. The Matcher runs first, then the injection check, whose calls and cost are
+ * also reported on their own.
+ */
+async function liveRun(meter: Meter) {
   const db = createDb(":memory:");
-  return runEval(createLlmMatcher(db, { source: "eval", person: null, meter }), CASES, db);
+  const caller: AiCaller = { source: "eval", person: null, meter };
+  const matcherRun = await runEval(createLlmMatcher(db, caller), CASES, db);
+  const before = meter.totals();
+  const injection = await runInjectionCheck(evalEvaluator(db, caller));
+  const after = meter.totals();
+  return {
+    ...matcherRun,
+    injection: { ...injection, calls: after.calls - before.calls, costUsd: after.costUsd - before.costUsd },
+  };
 }
 
 async function main() {
@@ -112,7 +129,8 @@ async function main() {
   }
   console.log(
     `Estimate (worst case): $${estimated.costUsd.toFixed(4)} for ${estimated.calls} AI calls ` +
-      `(prompt chars ÷ 4 at $${prices.input}/MTok in, ${AI_MAX_OUTPUT_TOKENS.matcher} output tokens per call at $${prices.output}/MTok).`,
+      `(prompt chars ÷ 4 at $${prices.input}/MTok in; ${AI_MAX_OUTPUT_TOKENS.matcher} output tokens per Matcher call and ` +
+      `${AI_MAX_OUTPUT_TOKENS.evaluator} per Evaluator call at $${prices.output}/MTok).`,
   );
   if (estimateOnly) return;
 
@@ -122,7 +140,7 @@ async function main() {
 
   const meter = createMeter(EVAL_CAP);
 
-  console.log(`Running ${CASES.length} cases and the seed replay on ${CLAUDE_MODEL}...`);
+  console.log(`Running the seed replay, ${CASES.length} cases and the Evaluator injection check on ${CLAUDE_MODEL}...`);
   let run;
   try {
     run = await liveRun(meter);
