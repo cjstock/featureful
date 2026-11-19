@@ -1,7 +1,7 @@
 /**
  * Delimiting Customer text in AI prompts (spec: Delimiting). Customer-written text goes inside a
  * tag, and the system prompt says tagged content is data, never instructions. PM-written text
- * (Product Strategy, Boundary notes, review notes) stays untagged.
+ * (Product Strategy, review notes) stays untagged.
  */
 
 export const CUSTOMER_TEXT_TAGS = ["request_title", "request_description", "evidence"] as const;

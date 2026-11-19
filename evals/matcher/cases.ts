@@ -2,8 +2,7 @@
  * Fixed-state Matcher cases: the Problems the Matcher is shown, one new Request,
  * and the right answer. Each case is independent of the others and of the replay.
  *
- * Kinds: golden (clear-cut), boundary (same area, different need, or a Boundary
- * note decides it), adversarial (prompt injection in the Request), regression
+ * Kinds: golden (clear-cut), boundary (same area, different need), adversarial (prompt injection in the Request), regression
  * (from Match reviews; loaded from regression.json).
  *
  * `must` cases block the gate whenever they fail. The adversarial cases started as
@@ -18,12 +17,7 @@ import regression from "./regression.json";
 
 const HAND_WRITTEN_SOURCE = "hand-written (build ticket 02)";
 
-const problem = (id: number, title: string, need: string, boundaryNote: string | null = null): ProblemSummary => ({
-  id,
-  title,
-  need,
-  boundaryNote,
-});
+const problem = (id: number, title: string, need: string): ProblemSummary => ({ id, title, need });
 
 /** A small, realistic Problem list for a coffee-tracking app. */
 const PROBLEMS: ProblemSummary[] = [
@@ -58,10 +52,6 @@ const PROBLEMS: ProblemSummary[] = [
     "I need a dark appearance, so the app doesn't glare when I log brews in a dim kitchen.",
   ),
 ];
-
-/** PROBLEMS, with Boundary notes on the Problems a boundary case turns on. */
-const withNotes = (notes: Record<number, string>): ProblemSummary[] =>
-  PROBLEMS.map((p) => ({ ...p, boundaryNote: notes[p.id] ?? p.boundaryNote }));
 
 const HAND_CASES: MatcherCase[] = [
   // Golden: clear-cut matches and clear-cut new needs.
@@ -143,7 +133,8 @@ const HAND_CASES: MatcherCase[] = [
     expected: "new",
   },
 
-  // Boundary: same area of the app, different underlying need, or a Boundary note decides.
+  // Boundary: same area of the app, different underlying need. The two `-note` cases carried a
+  // Boundary note until ADR 0003 cut them; they keep their ids and answers so the baseline stays comparable.
   {
     id: "boundary-grind-recommendation",
     kind: "boundary",
@@ -162,9 +153,7 @@ const HAND_CASES: MatcherCase[] = [
     kind: "boundary",
     must: false,
     source: HAND_WRITTEN_SOURCE,
-    problems: withNotes({
-      3: "Covers green (unroasted) bean stock only; not roasted coffee waiting to be brewed.",
-    }),
+    problems: PROBLEMS,
     request: {
       title: "How much roasted coffee is left in my jars",
       description:
@@ -202,9 +191,7 @@ const HAND_CASES: MatcherCase[] = [
     kind: "boundary",
     must: false,
     source: HAND_WRITTEN_SOURCE,
-    problems: withNotes({
-      1: "Covers one-off exports and backups of roast data; not live syncing into other apps as I log.",
-    }),
+    problems: PROBLEMS,
     request: {
       title: "Live sync my roasts to Notion",
       description:
@@ -252,7 +239,6 @@ const regressionCaseSchema = z.object({
       id: z.number().int(),
       title: z.string(),
       need: z.string(),
-      boundaryNote: z.string().nullable(),
     }),
   ),
   request: z.object({ title: z.string(), description: z.string() }),

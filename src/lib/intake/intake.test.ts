@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
 import { createDb, type Db } from "@/db";
 import { aiCalls, matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { offlineModel, promptVersion } from "@/lib/ai";
@@ -232,7 +231,7 @@ describe("Intake passes Matching examples to the Matcher", () => {
 
     const { db, alex, grinder, intake } = setup(noMatch);
     const [sam] = db.insert(people).values({ name: "Sam", role: "pm" }).returning().all();
-    const review = createMatchReview({ db, boundaryNoteWriter: async () => "" });
+    const review = createMatchReview({ db });
     const place = async (title: string) => {
       const draft = { title, description: `${title}.` };
       const { requestId } = intake.confirm(draft, await intake.propose(draft), { attachTo: grinder.id }, alex.id);
@@ -270,20 +269,18 @@ function setupTarget(db: Db) {
   return db.insert(problems).values({ title: "Taste", need: "I need to taste." }).returning().get();
 }
 
-describe("Intake passes Boundary notes to the Matcher", () => {
-  it("each Problem summary carries its Boundary note, or null when it has none", async () => {
+describe("Intake passes Problem summaries to the Matcher", () => {
+  it("each Problem summary is the Problem's id, title and need, and nothing else", async () => {
     let seen: Parameters<Matcher>[1] = [];
     const spy: Matcher = async (_r, list) => ((seen = list), { match: null, newProblem: NEW_PROBLEM });
     const { db, grinder, intake } = setup(spy);
-    const note = "Includes remembering grind settings. Does not include grinder maintenance.";
-    db.update(problems).set({ boundaryNote: note }).where(eq(problems.id, grinder.id)).run();
     const taste = setupTarget(db);
 
     await intake.propose(request);
 
     expect(seen).toEqual([
-      { id: grinder.id, title: grinder.title, need: grinder.need, boundaryNote: note },
-      { id: taste.id, title: "Taste", need: "I need to taste.", boundaryNote: null },
+      { id: grinder.id, title: grinder.title, need: grinder.need },
+      { id: taste.id, title: "Taste", need: "I need to taste." },
     ]);
   });
 });
@@ -336,7 +333,7 @@ describe("the Matcher's AI call on the Matching decision", () => {
       personId: alex.id,
       relatedType: "request",
       relatedId: requestId,
-      shownProblems: [{ id: grinder.id, title: grinder.title, need: grinder.need, boundaryNote: null }],
+      shownProblems: [{ id: grinder.id, title: grinder.title, need: grinder.need }],
     });
     expect(db.select().from(matchingDecisions).get()).toMatchObject({
       aiCallId: call.id,
@@ -345,7 +342,7 @@ describe("the Matcher's AI call on the Matching decision", () => {
     expect(call.promptVersion).toBe(promptVersion(call.system));
 
     // The PM's decision card reads the AI call line from the Match review queue.
-    const [item] = createMatchReview({ db, boundaryNoteWriter: async () => "" }).listQueue();
+    const [item] = createMatchReview({ db }).listQueue();
     expect(item.aiCall).toEqual({
       id: call.id,
       module: "matcher",
@@ -384,6 +381,6 @@ describe("the Matcher's AI call on the Matching decision", () => {
     const proposal = await intake.propose(request);
     intake.confirm(request, proposal, { createProblem: NEW_PROBLEM }, alex.id);
     expect(db.select().from(matchingDecisions).get()).toMatchObject({ aiCallId: null, promptVersion: null });
-    expect(createMatchReview({ db, boundaryNoteWriter: async () => "" }).listQueue()[0].aiCall).toBeNull();
+    expect(createMatchReview({ db }).listQueue()[0].aiCall).toBeNull();
   });
 });

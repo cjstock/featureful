@@ -14,8 +14,8 @@ import { isMatcherPromptFor } from "./llm-matcher";
 /** A Request as typed by the submitter, before it is saved. */
 export type RequestDraft = { title: string; description: string };
 
-/** What the Matcher sees of each existing Problem, including its Boundary note (null if none). */
-export type ProblemSummary = { id: number; title: string; need: string; boundaryNote: string | null };
+/** What the Matcher sees of each existing Problem. */
+export type ProblemSummary = { id: number; title: string; need: string };
 
 /** A new Problem statement: the underlying need, not a proposed solution. */
 export type NewProblemStatement = { title: string; need: string };
@@ -39,7 +39,7 @@ export type MatchingExample = MatchingDecisionItem & {
 };
 
 /**
- * Given a Request, summaries of every Problem (with Boundary notes), and Matching examples (corrections first, then
+ * Given a Request, summaries of every Problem, and Matching examples (corrections first, then
  * most recently reviewed, at most 20), propose a match or a new Problem.
  */
 export type Matcher = (
@@ -97,7 +97,6 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
         id: problems.id,
         title: problems.title,
         need: problems.need,
-        boundaryNote: problems.boundaryNote,
       })
       .from(problems)
       .orderBy(asc(problems.id))

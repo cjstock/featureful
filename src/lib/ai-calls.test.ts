@@ -59,7 +59,7 @@ describe("formatAiCallLine", () => {
 
 describe("getAiCallContent", () => {
   it("gives a PM the stored prompt, output and the Problems shown", () => {
-    const shown = [{ id: 1, title: "Repeat a brew", need: "I need to repeat a brew.", boundaryNote: null }];
+    const shown = [{ id: 1, title: "Repeat a brew", need: "I need to repeat a brew." }];
     const { id } = call({ module: "matcher", shownProblems: shown });
     expect(getAiCallContent(db, pm, id)).toMatchObject({
       id,

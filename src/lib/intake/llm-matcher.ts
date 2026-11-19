@@ -22,8 +22,6 @@ If you match, give your confidence (0 to 1) and a one-line reason a submitter ca
 
 You may also get Matching examples: past Requests where a product manager (PM) reviewed what was decided. "Moved" and "Split" are corrections of a wrong grouping; "Confirmed" means the grouping was right. They show where the PM draws the line between Problems, so follow the same judgement (and the PM's notes) for similar Requests.
 
-Some Problems have a Boundary note, written from the PM's reviews, saying what that Problem does and does not cover. Treat it as the PM's ruling: never match a Request to a Problem whose Boundary note excludes its need.
-
 ${customerTextRule("request_title", "request_description")}`;
 
 const schema = z.object({
@@ -88,13 +86,7 @@ export function createLlmMatcher(db: Db, caller: AiCaller): Matcher {
     const list =
       problems.length === 0
         ? "(none yet)"
-        : problems
-            .map(
-              (p) =>
-                `- id ${p.id}: ${p.title} — ${p.need}` +
-                (p.boundaryNote ? `\n  Boundary note: ${p.boundaryNote}` : ""),
-            )
-            .join("\n");
+        : problems.map((p) => `- id ${p.id}: ${p.title} — ${p.need}`).join("\n");
 
     const examplesSection =
       examples.length === 0

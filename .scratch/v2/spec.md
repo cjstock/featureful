@@ -16,7 +16,7 @@ v2 keeps every v1 feature and adds the system around the model:
 - **Every AI call recorded and metered** through one lint-enforced seam: prompt version, full content, tokens, cost and outcome.
 - **Controls in infrastructure:** a daily budget, a per-person submit limit, and a PM off switch for each module. Running out of budget or switching a module off degrades the workflow instead of blocking it.
 - **Match review rebuilt as an Escalation inbox.** Only risky decisions reach a PM. Each card shows the Problem's Evidence. Corrections become Regression cases.
-- **Boundary notes on trial.** They stay only if an ablation shows they help, and then only as PM-accepted suggestions.
+- **Boundary notes on trial.** They stay only if an ablation shows they help, and then only as PM-accepted suggestions. (Cut: ADR 0003.)
 - **Honest metrics on `/review`:** spot-check PM agreement rate, Escalation rate, cost per Request, and time to a decision.
 - **A build process that holds itself to the same standard:** a delegation charter with risk lanes, a PR template that declares AI involvement, one PR per slice, and a build ledger.
 
@@ -43,7 +43,7 @@ v2 keeps every v1 feature and adds the system around the model:
 12. As a PM, I clear the inbox with `j`/`k` and `1`/`2`/`3`: Confirm takes one click, Move and Split need a note, and saving moves on to the next item.
 13. As a PM, my Move and Split reviews become Regression cases by default.
 14. As a PM, I can still review any Auto-accepted decision.
-15. (Conditional on the ablation) As a PM, after a Move or Split I see a suggested Boundary note revision as a diff, and nothing changes until I accept it.
+15. (Conditional on the ablation; cut by ADR 0003, so not built) As a PM, after a Move or Split I see a suggested Boundary note revision as a diff, and nothing changes until I accept it.
 
 ### Metrics
 16. As a PM, the inbox header shows spot-check PM agreement rate, Escalation rate and Regression cases marked, each with its n, its window and what it can't tell me; with n < 10, it says "too few".
@@ -104,6 +104,7 @@ v2 keeps every v1 feature and adds the system around the model:
   - **If kept:** Suggest-level, with revision records.
   - **If cut:** removed entirely.
   - ADR 0003 records the result.
+  - **Result: cut** ([ADR 0003](../../docs/adr/0003-boundary-notes-on-ablation-evidence.md), decided by rule overnight 2026-11-18; the human may overturn). (c) − (b) was +0 on both runs. The writer, prompt section, editor, background distillation and column are removed.
 - **Metrics** ([metrics ticket](issues/07-review-metrics.md)):
   - PM agreement rate = Confirms ÷ spot-check reviews, over the last 30.
   - Escalation rate covers the last 7 days.
@@ -150,5 +151,5 @@ Stretch items (freshness, ledger) come last and are cut first. If time runs shor
 
 ## Further Notes
 
-- Glossary: AI call, Escalation, Escalation reason, Auto-accepted, Regression case, PM agreement rate and Escalation rate were added during wayfinding. The Boundary note entry changes or goes after the ablation.
+- Glossary: AI call, Escalation, Escalation reason, Auto-accepted, Regression case, PM agreement rate and Escalation rate were added during wayfinding. The Boundary note entry was removed after the ablation (ADR 0003).
 - Run `jj st` before describing a change, and never stage `.env`.

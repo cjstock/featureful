@@ -68,10 +68,6 @@ _Avoid_: Accuracy, precision
 The share of Matching decisions that are escalated for Match review.
 _Avoid_: Error rate
 
-**Boundary note**:
-A short statement on a Problem of what it does and does not cover, distilled from Match reviews, that the Matcher reads alongside the Problem.
-_Avoid_: Scope note, rule, description
-
 ### Evaluation
 
 **Product Strategy**:

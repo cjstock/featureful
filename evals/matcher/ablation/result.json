@@ -1,0 +1,633 @@
+{
+  "commit": "72138eddd088",
+  "date": "2026-11-19T05:58:43.499Z",
+  "model": "claude-sonnet-5-5",
+  "notesFixture": {
+    "commit": "72138eddd088",
+    "date": "2026-11-19T05:56:21.493Z",
+    "calls": 14,
+    "costUsd": 0.04292
+  },
+  "boundaryCases": 8,
+  "goldenCases": 3,
+  "summary": [
+    {
+      "run": 1,
+      "wins": {
+        "a": 8,
+        "b": 8,
+        "c": 8
+      },
+      "margin": 0,
+      "goldenRegressions": []
+    },
+    {
+      "run": 2,
+      "wins": {
+        "a": 7,
+        "b": 8,
+        "c": 8
+      },
+      "margin": 0,
+      "goldenRegressions": []
+    }
+  ],
+  "costPerRequest": {
+    "a": 0.005195499999999999,
+    "b": 0.008297454545454544,
+    "c": 0.010860636363636366
+  },
+  "decision": "cut",
+  "calls": 60,
+  "costUsd": 0.504606,
+  "runs": [
+    {
+      "arm": "a",
+      "run": 1,
+      "cases": [
+        {
+          "id": "ablation-boundary-cropster-curve-target",
+          "kind": "boundary",
+          "must": false,
+          "expected": 2,
+          "answer": 2,
+          "passed": true,
+          "reason": "The submitter wants a reference roast curve visible while roasting to reproduce a previous batch, matching the need for a target profile for repeatable roasts; Cropster is only the source of the curve."
+        },
+        {
+          "id": "ablation-boundary-download-shared-recipe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 4,
+          "answer": 4,
+          "passed": true,
+          "reason": "Both need to keep a recipe someone shared as my own copy so I can edit it without altering the original."
+        },
+        {
+          "id": "ablation-boundary-settings-wrong-after-cleaning",
+          "kind": "boundary",
+          "must": false,
+          "expected": 6,
+          "answer": 6,
+          "passed": true,
+          "reason": "Both need saved grind settings to stay meaningful after cleaning or servicing the grinder, so past notes remain useful."
+        },
+        {
+          "id": "ablation-boundary-dose-out-lighter-than-in",
+          "kind": "boundary",
+          "must": false,
+          "expected": 7,
+          "answer": 7,
+          "passed": true,
+          "reason": "Both are about coffee retained in the grinder, so the dose that actually comes out differs from what was weighed in and ratios end up inaccurate."
+        },
+        {
+          "id": "ablation-boundary-scale-recipe-carafe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 9,
+          "answer": 9,
+          "passed": true,
+          "reason": "Both need the app to compute water/dose quantities from a ratio so I don't do the maths by hand and brews stay consistent; scaling a recipe to a target volume is a close variant."
+        },
+        {
+          "id": "ablation-boundary-new-phone-keep-roasts",
+          "kind": "boundary",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need a way to take roast data out of the app so it is never lost; here the trigger is a phone change, and one export/backup solution would satisfy both."
+        },
+        {
+          "id": "ablation-boundary-subtract-dose-from-bag",
+          "kind": "boundary",
+          "must": false,
+          "expected": 10,
+          "answer": 10,
+          "passed": true,
+          "reason": "Both need roasted coffee stock to decrease as I brew so I can see how much is left and plan my next roast before running out."
+        },
+        {
+          "id": "ablation-boundary-roast-lands-in-spreadsheet",
+          "kind": "boundary",
+          "must": false,
+          "expected": 11,
+          "answer": 11,
+          "passed": true,
+          "reason": "Both need what I log here to appear automatically in other tools I use (here a spreadsheet) without manual exporting, so they never fall behind."
+        }
+      ],
+      "calls": 8,
+      "costUsd": 0.041743999999999996
+    },
+    {
+      "arm": "b",
+      "run": 1,
+      "cases": [
+        {
+          "id": "ablation-boundary-cropster-curve-target",
+          "kind": "boundary",
+          "must": false,
+          "expected": 2,
+          "answer": 2,
+          "passed": true,
+          "reason": "Both want a target roast profile displayed as a reference while roasting to repeat a curve; the Cropster source doesn't matter (see the Artisan background profile ruling)."
+        },
+        {
+          "id": "ablation-boundary-download-shared-recipe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 4,
+          "answer": 4,
+          "passed": true,
+          "reason": "Both need to keep a recipe someone shared as my own editable copy without altering the original."
+        },
+        {
+          "id": "ablation-boundary-settings-wrong-after-cleaning",
+          "kind": "boundary",
+          "must": false,
+          "expected": 6,
+          "answer": 6,
+          "passed": true,
+          "reason": "Both need saved grind settings to keep meaning the same grind after the grinder is cleaned or serviced, so past notes stay useful."
+        },
+        {
+          "id": "ablation-boundary-dose-out-lighter-than-in",
+          "kind": "boundary",
+          "must": false,
+          "expected": 7,
+          "answer": 7,
+          "passed": true,
+          "reason": "Both need to account for the gap between coffee put into the grinder and coffee that actually comes out, so doses and ratios are accurate."
+        },
+        {
+          "id": "ablation-boundary-scale-recipe-carafe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 9,
+          "answer": 9,
+          "passed": true,
+          "reason": "Scaling a recipe to a bigger batch while keeping the same strength is the same need as working out water for a given dose and ratio (per PM ruling on halving a recipe)."
+        },
+        {
+          "id": "ablation-boundary-new-phone-keep-roasts",
+          "kind": "boundary",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Same need as the PM-confirmed backup case: keeping my own roast data safe from loss by having a copy I control, which one export/backup would satisfy."
+        },
+        {
+          "id": "ablation-boundary-subtract-dose-from-bag",
+          "kind": "boundary",
+          "must": false,
+          "expected": 10,
+          "answer": 10,
+          "passed": true,
+          "reason": "Both need to know how much roasted coffee remains on the shelf as I use it, so I can plan my next roast before running out."
+        },
+        {
+          "id": "ablation-boundary-roast-lands-in-spreadsheet",
+          "kind": "boundary",
+          "must": false,
+          "expected": 11,
+          "answer": 11,
+          "passed": true,
+          "reason": "Both want what I log to appear automatically in another tool (spreadsheet) as I save it, without manual export."
+        },
+        {
+          "id": "ablation-golden-artisan-finished-roasts",
+          "kind": "golden",
+          "must": false,
+          "expected": 1,
+          "answer": 1,
+          "passed": true,
+          "reason": "Both need finished roast logs to come in from the roasting software (Artisan) instead of re-typing temperatures and times by hand."
+        },
+        {
+          "id": "ablation-golden-csv-export",
+          "kind": "golden",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need to take my own brew/roast data out of the app in a format other tools can read, to analyse it elsewhere."
+        },
+        {
+          "id": "ablation-golden-green-sack-low",
+          "kind": "golden",
+          "must": false,
+          "expected": 8,
+          "answer": 8,
+          "passed": true,
+          "reason": "Both need green bean stock to decrease as I roast so I know when to reorder before running out."
+        }
+      ],
+      "calls": 11,
+      "costUsd": 0.09130199999999997
+    },
+    {
+      "arm": "c",
+      "run": 1,
+      "cases": [
+        {
+          "id": "ablation-boundary-cropster-curve-target",
+          "kind": "boundary",
+          "must": false,
+          "expected": 2,
+          "answer": 2,
+          "passed": true,
+          "reason": "Both need a target roast profile (here from Cropster) to follow during the next roast so the curve can be repeated; the source software doesn't matter."
+        },
+        {
+          "id": "ablation-boundary-download-shared-recipe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 4,
+          "answer": 4,
+          "passed": true,
+          "reason": "Both need to take a recipe someone else shared and keep it as my own editable copy without changing the original."
+        },
+        {
+          "id": "ablation-boundary-settings-wrong-after-cleaning",
+          "kind": "boundary",
+          "must": false,
+          "expected": 6,
+          "answer": 6,
+          "passed": true,
+          "reason": "Cleaning/servicing the grinder changed what the dial numbers mean, so saved grind settings are no longer reliable, which is the same calibration need."
+        },
+        {
+          "id": "ablation-boundary-dose-out-lighter-than-in",
+          "kind": "boundary",
+          "must": false,
+          "expected": 7,
+          "answer": 7,
+          "passed": true,
+          "reason": "Both need to account for the gap between coffee put into the grinder and coffee that comes out (retained grounds) so doses and ratios are accurate."
+        },
+        {
+          "id": "ablation-boundary-scale-recipe-carafe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 9,
+          "answer": 9,
+          "passed": true,
+          "reason": "Both need the right water (and coffee) amounts when scaling a recipe up or down while keeping the same ratio; the PM ruled scaling belongs under this Problem."
+        },
+        {
+          "id": "ablation-boundary-new-phone-keep-roasts",
+          "kind": "boundary",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need a copy of my own roast data held outside the app so I never lose it; the phone change is just the trigger, and a backup/export would satisfy it."
+        },
+        {
+          "id": "ablation-boundary-subtract-dose-from-bag",
+          "kind": "boundary",
+          "must": false,
+          "expected": 10,
+          "answer": 10,
+          "passed": true,
+          "reason": "Both need to see how much roasted coffee remains on the shelf (decreasing as I brew) so I can plan the next roast before running out."
+        },
+        {
+          "id": "ablation-boundary-roast-lands-in-spreadsheet",
+          "kind": "boundary",
+          "must": false,
+          "expected": 11,
+          "answer": 11,
+          "passed": true,
+          "reason": "Both need what I log here to appear automatically in another tool (a spreadsheet) as I save it, without manual exporting."
+        },
+        {
+          "id": "ablation-golden-artisan-finished-roasts",
+          "kind": "golden",
+          "must": false,
+          "expected": 1,
+          "answer": 1,
+          "passed": true,
+          "reason": "Both need records of finished roasts (temperatures, times) brought in from the roasting software instead of re-typed by hand."
+        },
+        {
+          "id": "ablation-golden-csv-export",
+          "kind": "golden",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need a one-off export of my own brew data in a format other tools can read, for analysis elsewhere."
+        },
+        {
+          "id": "ablation-golden-green-sack-low",
+          "kind": "golden",
+          "must": false,
+          "expected": 8,
+          "answer": 8,
+          "passed": true,
+          "reason": "Both need green bean stock to decrease as I roast so I know when to reorder before running out."
+        }
+      ],
+      "calls": 11,
+      "costUsd": 0.11950200000000002
+    },
+    {
+      "arm": "a",
+      "run": 2,
+      "cases": [
+        {
+          "id": "ablation-boundary-cropster-curve-target",
+          "kind": "boundary",
+          "must": false,
+          "expected": 2,
+          "answer": 2,
+          "passed": true,
+          "reason": "Both need a reference target roast curve visible while roasting to repeat a previous result; Cropster is just the source of the curve."
+        },
+        {
+          "id": "ablation-boundary-download-shared-recipe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 4,
+          "answer": 4,
+          "passed": true,
+          "reason": "Both need to keep a recipe someone shared as my own editable copy without altering the original."
+        },
+        {
+          "id": "ablation-boundary-settings-wrong-after-cleaning",
+          "kind": "boundary",
+          "must": false,
+          "expected": 6,
+          "answer": 6,
+          "passed": true,
+          "reason": "Both need saved grind settings to stay meaningful after cleaning or servicing the grinder, so notes remain useful."
+        },
+        {
+          "id": "ablation-boundary-dose-out-lighter-than-in",
+          "kind": "boundary",
+          "must": false,
+          "expected": 7,
+          "answer": 7,
+          "passed": true,
+          "reason": "Both are about coffee retained in the grinder, so the dose that actually comes out is less than what was weighed in, which throws off ratios."
+        },
+        {
+          "id": "ablation-boundary-scale-recipe-carafe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 9,
+          "answer": 9,
+          "passed": true,
+          "reason": "Both need the app to work out water amounts for a target ratio so brews stay consistent without manual maths; here the target is a larger volume at the same strength."
+        },
+        {
+          "id": "ablation-boundary-new-phone-keep-roasts",
+          "kind": "boundary",
+          "must": false,
+          "expected": 3,
+          "answer": "new",
+          "passed": false,
+          "reason": "The need is protecting roast data against loss when changing devices (backup/continuity), which differs from Problem 3's export-to-other-tools need, so I'm not matching on the loose 'never lose it' overlap. (New Problem: Keep my roast history safe when changing phones)"
+        },
+        {
+          "id": "ablation-boundary-subtract-dose-from-bag",
+          "kind": "boundary",
+          "must": false,
+          "expected": 10,
+          "answer": 10,
+          "passed": true,
+          "reason": "Both need roasted coffee stock to decrease as I brew so I can see what's left and plan my next roast before running out."
+        },
+        {
+          "id": "ablation-boundary-roast-lands-in-spreadsheet",
+          "kind": "boundary",
+          "must": false,
+          "expected": 11,
+          "answer": 11,
+          "passed": true,
+          "reason": "Both need what I log here to automatically appear in another tool I use (the spreadsheet) without manual export, so it never falls behind."
+        }
+      ],
+      "calls": 8,
+      "costUsd": 0.041383999999999976
+    },
+    {
+      "arm": "b",
+      "run": 2,
+      "cases": [
+        {
+          "id": "ablation-boundary-cropster-curve-target",
+          "kind": "boundary",
+          "must": false,
+          "expected": 2,
+          "answer": 2,
+          "passed": true,
+          "reason": "Both need a target roast profile shown as a reference while roasting to repeat a curve; the source (Cropster) doesn't matter per the PM's ruling on Artisan profiles."
+        },
+        {
+          "id": "ablation-boundary-download-shared-recipe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 4,
+          "answer": 4,
+          "passed": true,
+          "reason": "Both need to keep a recipe someone else shared as my own editable copy without changing the original."
+        },
+        {
+          "id": "ablation-boundary-settings-wrong-after-cleaning",
+          "kind": "boundary",
+          "must": false,
+          "expected": 6,
+          "answer": 6,
+          "passed": true,
+          "reason": "Both need saved grind settings to keep meaning the same grind after servicing (cleaning/changing burrs) the grinder."
+        },
+        {
+          "id": "ablation-boundary-dose-out-lighter-than-in",
+          "kind": "boundary",
+          "must": false,
+          "expected": 7,
+          "answer": 7,
+          "passed": true,
+          "reason": "Both need to account for the gap between coffee put into the grinder and coffee that actually comes out, so doses and ratios are accurate."
+        },
+        {
+          "id": "ablation-boundary-scale-recipe-carafe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 9,
+          "answer": 9,
+          "passed": true,
+          "reason": "Scaling a recipe to a bigger batch while keeping the same strength is the same need as working out water for a given dose and brew ratio (PM ruled recipe halving belongs here)."
+        },
+        {
+          "id": "ablation-boundary-new-phone-keep-roasts",
+          "kind": "boundary",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Same need as the PM-confirmed backup case: keeping my own roast data safe from loss by having a copy I control, which one export/backup would satisfy."
+        },
+        {
+          "id": "ablation-boundary-subtract-dose-from-bag",
+          "kind": "boundary",
+          "must": false,
+          "expected": 10,
+          "answer": 10,
+          "passed": true,
+          "reason": "Both need to know how much roasted coffee remains on the shelf (decreasing as I brew) so I can plan the next roast before running out."
+        },
+        {
+          "id": "ablation-boundary-roast-lands-in-spreadsheet",
+          "kind": "boundary",
+          "must": false,
+          "expected": 11,
+          "answer": 11,
+          "passed": true,
+          "reason": "Both need what I log to appear automatically in another tool (a spreadsheet) as I save it, without manual export."
+        },
+        {
+          "id": "ablation-golden-artisan-finished-roasts",
+          "kind": "golden",
+          "must": false,
+          "expected": 1,
+          "answer": 1,
+          "passed": true,
+          "reason": "Both need finished roast logs to come in from the roasting software (Artisan) instead of re-typing temperatures and times by hand."
+        },
+        {
+          "id": "ablation-golden-csv-export",
+          "kind": "golden",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need my own roast/brew data taken out of the app in a readable format (one-off CSV export) to analyse elsewhere."
+        },
+        {
+          "id": "ablation-golden-green-sack-low",
+          "kind": "golden",
+          "must": false,
+          "expected": 8,
+          "answer": 8,
+          "passed": true,
+          "reason": "Both need green bean stock to decrease as I roast so I know when to reorder before running out."
+        }
+      ],
+      "calls": 11,
+      "costUsd": 0.09124199999999999
+    },
+    {
+      "arm": "c",
+      "run": 2,
+      "cases": [
+        {
+          "id": "ablation-boundary-cropster-curve-target",
+          "kind": "boundary",
+          "must": false,
+          "expected": 2,
+          "answer": 2,
+          "passed": true,
+          "reason": "Both need a target roast profile (here from Cropster) to follow during the next roast so the curve can be repeated; the source software doesn't change the need."
+        },
+        {
+          "id": "ablation-boundary-download-shared-recipe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 4,
+          "answer": 4,
+          "passed": true,
+          "reason": "Both need to take a recipe someone else shared and keep it as my own editable copy without changing the original."
+        },
+        {
+          "id": "ablation-boundary-settings-wrong-after-cleaning",
+          "kind": "boundary",
+          "must": false,
+          "expected": 6,
+          "answer": 6,
+          "passed": true,
+          "reason": "Cleaning/servicing the grinder changed what the dial numbers mean, so saved grind settings are no longer reliable, which is the calibration need in this Problem."
+        },
+        {
+          "id": "ablation-boundary-dose-out-lighter-than-in",
+          "kind": "boundary",
+          "must": false,
+          "expected": 7,
+          "answer": 7,
+          "passed": true,
+          "reason": "Both are about the gap between coffee put into the grinder and what comes out (retention), which makes doses and ratios inaccurate."
+        },
+        {
+          "id": "ablation-boundary-scale-recipe-carafe",
+          "kind": "boundary",
+          "must": false,
+          "expected": 9,
+          "answer": 9,
+          "passed": true,
+          "reason": "Both need the right water (and coffee) amounts when scaling a recipe up or down while keeping its ratio, like halving for one cup."
+        },
+        {
+          "id": "ablation-boundary-new-phone-keep-roasts",
+          "kind": "boundary",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need a copy of my own roast data saved outside the app so I never lose it; a backup or export would cover the phone change."
+        },
+        {
+          "id": "ablation-boundary-subtract-dose-from-bag",
+          "kind": "boundary",
+          "must": false,
+          "expected": 10,
+          "answer": 10,
+          "passed": true,
+          "reason": "Both need to see how much roasted coffee remains on the shelf as I use it so I can plan my next roast before running out."
+        },
+        {
+          "id": "ablation-boundary-roast-lands-in-spreadsheet",
+          "kind": "boundary",
+          "must": false,
+          "expected": 11,
+          "answer": 11,
+          "passed": true,
+          "reason": "Both need what I log here to appear automatically in another tool (a spreadsheet) as I save it, without manual exporting."
+        },
+        {
+          "id": "ablation-golden-artisan-finished-roasts",
+          "kind": "golden",
+          "must": false,
+          "expected": 1,
+          "answer": 1,
+          "passed": true,
+          "reason": "Both need records of already-completed roasts (temperatures, times) brought in from the roasting software instead of re-typed by hand."
+        },
+        {
+          "id": "ablation-golden-csv-export",
+          "kind": "golden",
+          "must": false,
+          "expected": 3,
+          "answer": 3,
+          "passed": true,
+          "reason": "Both need a one-off export of my own brew data in a readable format (CSV) to analyse elsewhere, which is covered by 'Get my data out of the app'."
+        },
+        {
+          "id": "ablation-golden-green-sack-low",
+          "kind": "golden",
+          "must": false,
+          "expected": 8,
+          "answer": 8,
+          "passed": true,
+          "reason": "Both need green (unroasted) coffee stock to decrease as I roast so I know when to reorder from the importer."
+        }
+      ],
+      "calls": 11,
+      "costUsd": 0.11943200000000004
+    }
+  ]
+}

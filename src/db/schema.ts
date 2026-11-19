@@ -28,7 +28,10 @@ export type SubmitterChoice = (typeof SUBMITTER_CHOICES)[number];
 export const VERDICTS = ["confirm", "move", "split"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
-/** The AI modules: each AI call is made by exactly one. */
+/**
+ * The AI modules: each AI call is made by exactly one. `boundary_note` (the Boundary-note writer) is
+ * retired (ADR 0003) and makes no calls; it stays so AI call records it made still read.
+ */
 export const AI_MODULES = ["matcher", "evaluator", "boundary_note", "decision_note", "brief"] as const;
 export type AiModule = (typeof AI_MODULES)[number];
 
@@ -92,9 +95,6 @@ export const problems = sqliteTable("problems", {
   // Decision brief.
   briefMarkdown: text("brief_markdown"),
   briefGeneratedAt: integer("brief_generated_at", { mode: "timestamp_ms" }),
-
-  /** Boundary note: what this Problem does and does not cover (read by the Matcher). */
-  boundaryNote: text("boundary_note"),
 });
 
 /** A Request is always attached to exactly one Problem (as Evidence). */

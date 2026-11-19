@@ -20,7 +20,7 @@ export const MODEL_PRICES: Record<string, ModelPrices> = {
 export const AI_MAX_OUTPUT_TOKENS = {
   matcher: 1_000,
   evaluator: 1_500,
-  boundary_note: 400,
+  boundary_note: 400, // retired (ADR 0003): no module calls with it
   decision_note: 800,
   brief: 2_500,
 } as const satisfies Record<AiModule, number>;

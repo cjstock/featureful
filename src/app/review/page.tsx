@@ -32,7 +32,7 @@ export default async function ReviewPage({
   const person = await getCurrentPerson();
   if (!isPm(person)) notFound();
   const reviewedTab = (await searchParams).tab === "reviewed";
-  const review = getMatchReview(person.id);
+  const review = getMatchReview();
   const queueCount = review.countQueue();
   const items = reviewedTab ? review.listReviewed() : review.listQueue();
   const problemOptions = reviewedTab
