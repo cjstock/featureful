@@ -217,3 +217,7 @@
 [2026-11-19T12:11:36-08:00] Prompt: we've got to be close to finishing everything
   Response: (orchestration) Status: 11 of 12 tickets merged; 09 in fix pass 1; then one docs chore PR (final report, ledger, statuses).
 [2026-11-19T12:14:22-08:00] (orchestration) Merged PR #12 (ticket 09) after fix pass 1 (CI $0.2531). All 12 build tickets done. Total spend $5.33; est. balance $3.41. Wrote final report + ledger; opening closing chore PR.
+[2026-11-19T12:16:44-08:00] (orchestration) Merged final chore PR #13. v2 build complete; nothing touched main.
+[2026-11-19T12:22:29-08:00] Prompt: open the v2 to main PR, then push
+  Response: (orchestration) Opening the v2 -> main PR (human-requested), then pushing the pending prompts.txt log commit to v2.
+[2026-11-19T12:23:12-08:00] (orchestration) Opened v2 -> main PR #14 (not merged); pushing this log commit to v2.
