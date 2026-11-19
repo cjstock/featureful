@@ -18,8 +18,8 @@ Every build ticket carries a `Lane:` line. A PR takes the **highest lane it touc
 
 ## Before the human looks
 
-- Every PR runs lint, typecheck and test in CI (the `checks` job). PRs that change AI files will also run the eval; that job arrives with build ticket 02.
-- **AI files** are `src/lib/ai.ts`, `src/lib/config.ts`, `src/lib/intake/**`, `src/lib/evaluator.ts`, `src/lib/match-review.ts`, `evals/**`, `scripts/eval.ts` and `package-lock.json` (the eval job's path filter).
+- Every PR runs lint, typecheck and test in CI (the `checks` job). PRs that change AI files also run the Matcher eval (the `eval` job, `npm run eval`), gated against `evals/baseline.json`.
+- **AI files** are `src/lib/ai.ts`, `src/lib/config.ts`, `src/lib/intake/**`, `src/lib/evaluator.ts`, `src/lib/match-review.ts`, `evals/**`, `scripts/eval.ts` and `package-lock.json` (the eval job's path filter, which also watches `.github/workflows/ci.yml` itself).
 - Yellow and Red PRs also get the `/code-review` standards and spec pass; Green skips it.
 
 ## PR shape

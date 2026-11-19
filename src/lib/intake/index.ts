@@ -25,6 +25,8 @@ export type NewProblemStatement = { title: string; need: string };
 export type MatcherResult = {
   match: { problemId: number; confidence: number; reason: string } | null;
   newProblem: NewProblemStatement;
+  /** The Matcher's one-line reason, including why nothing matches. Read by the eval report; intake ignores it. */
+  reason?: string;
 };
 
 /** A reviewed Matching decision (with its Match review) that the Matcher learns from. */

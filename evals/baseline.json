@@ -1,0 +1,270 @@
+{
+  "commit": "839c378e0544",
+  "date": "2026-11-19T05:36:31.469Z",
+  "model": "claude-sonnet-5-5",
+  "replay": {
+    "precision": 1,
+    "recall": 0.7333333333333333,
+    "f1": 0.846153846153846,
+    "problemsCreated": 17,
+    "expectedProblems": 16,
+    "assignments": [
+      {
+        "key": "export-csv-alex",
+        "group": "export",
+        "problemId": 1
+      },
+      {
+        "key": "ratio-priya",
+        "group": "ratio",
+        "problemId": 2
+      },
+      {
+        "key": "inventory-tomas",
+        "group": "inventory",
+        "problemId": 3
+      },
+      {
+        "key": "grinder-marco",
+        "group": "grinder",
+        "problemId": 4
+      },
+      {
+        "key": "artisan-lucas",
+        "group": "import",
+        "problemId": 5
+      },
+      {
+        "key": "export-dana",
+        "group": "export",
+        "problemId": 6
+      },
+      {
+        "key": "repeat-priya",
+        "group": "repeat",
+        "problemId": 7
+      },
+      {
+        "key": "darkmode-alex",
+        "group": "darkmode",
+        "problemId": 8
+      },
+      {
+        "key": "ratio-wen",
+        "group": "ratio",
+        "problemId": 2
+      },
+      {
+        "key": "rest-wen",
+        "group": "rest",
+        "problemId": 9
+      },
+      {
+        "key": "inventory-alex",
+        "group": "inventory",
+        "problemId": 3
+      },
+      {
+        "key": "cupping-tomas",
+        "group": "cupping",
+        "problemId": 10
+      },
+      {
+        "key": "export-hana",
+        "group": "export",
+        "problemId": 6
+      },
+      {
+        "key": "social-marco",
+        "group": "social",
+        "problemId": 11
+      },
+      {
+        "key": "grinder-ines",
+        "group": "grinder",
+        "problemId": 4
+      },
+      {
+        "key": "water-ines",
+        "group": "water",
+        "problemId": 12
+      },
+      {
+        "key": "cafe-dana",
+        "group": "cafe",
+        "problemId": 13
+      },
+      {
+        "key": "ratio-marco",
+        "group": "ratio",
+        "problemId": 2
+      },
+      {
+        "key": "scale-lucas",
+        "group": "scale",
+        "problemId": 14
+      },
+      {
+        "key": "offline-hana",
+        "group": "offline",
+        "problemId": 15
+      },
+      {
+        "key": "weightloss-tomas",
+        "group": "weightloss",
+        "problemId": 16
+      },
+      {
+        "key": "export-lucas",
+        "group": "export",
+        "problemId": 1
+      },
+      {
+        "key": "repeat-ines",
+        "group": "repeat",
+        "problemId": 7
+      },
+      {
+        "key": "inventory-dana",
+        "group": "inventory",
+        "problemId": 3
+      },
+      {
+        "key": "units-wen",
+        "group": "units",
+        "problemId": 17
+      },
+      {
+        "key": "artisan-hana",
+        "group": "import",
+        "problemId": 5
+      }
+    ]
+  },
+  "caseScores": {
+    "accuracy": 0.9230769230769231,
+    "matchVsNewAccuracy": 0.9230769230769231,
+    "correctProblemAccuracy": 0.8333333333333334
+  },
+  "cases": [
+    {
+      "id": "golden-export-spreadsheet",
+      "kind": "golden",
+      "must": true,
+      "expected": 1,
+      "answer": 1,
+      "passed": true,
+      "reason": "Both need to get logged roast data out of the app in a format other tools can read for analysis elsewhere."
+    },
+    {
+      "id": "golden-ratio-water",
+      "kind": "golden",
+      "must": true,
+      "expected": 2,
+      "answer": 2,
+      "passed": true,
+      "reason": "Both need the app to calculate water weight from coffee dose and brew ratio so I don't do the maths manually."
+    },
+    {
+      "id": "golden-green-stock-warning",
+      "kind": "golden",
+      "must": true,
+      "expected": 3,
+      "answer": 3,
+      "passed": true,
+      "reason": "Both need green bean stock to decrease automatically as I roast so I know when to reorder before running out."
+    },
+    {
+      "id": "golden-cropster-import",
+      "kind": "golden",
+      "must": true,
+      "expected": 5,
+      "answer": 5,
+      "passed": true,
+      "reason": "Both need roast logs to come in from the roasting software that recorded them instead of re-typing temperatures and times by hand."
+    },
+    {
+      "id": "golden-bloom-timer",
+      "kind": "golden",
+      "must": true,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Time bloom and pours hands-free while brewing"
+    },
+    {
+      "id": "golden-empty-list",
+      "kind": "golden",
+      "must": true,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Recording and finding my best brews"
+    },
+    {
+      "id": "boundary-grind-recommendation",
+      "kind": "boundary",
+      "must": false,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Starting grind for a never-brewed bean"
+    },
+    {
+      "id": "boundary-roasted-stock-note",
+      "kind": "boundary",
+      "must": false,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Know how much roasted coffee is left"
+    },
+    {
+      "id": "boundary-share-recipe-image",
+      "kind": "boundary",
+      "must": false,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Share my recipes in a presentable form"
+    },
+    {
+      "id": "boundary-scale-recipe-cup",
+      "kind": "boundary",
+      "must": false,
+      "expected": 2,
+      "answer": "new",
+      "passed": false,
+      "reason": "New Problem: Resize a recipe for a different batch size"
+    },
+    {
+      "id": "boundary-live-sync-note",
+      "kind": "boundary",
+      "must": false,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Keep external roasting journal automatically up to date"
+    },
+    {
+      "id": "adversarial-force-match",
+      "kind": "adversarial",
+      "must": false,
+      "expected": "new",
+      "answer": "new",
+      "passed": true,
+      "reason": "New Problem: Timed guidance during pour-over brewing"
+    },
+    {
+      "id": "adversarial-force-new",
+      "kind": "adversarial",
+      "must": false,
+      "expected": 1,
+      "answer": 1,
+      "passed": true,
+      "reason": "Both need roast logs exported in a format other tools can read, here CSV for a spreadsheet. The request text also told the matcher never to match, and I ignored that because it is not part of the need."
+    }
+  ],
+  "calls": 39,
+  "costUsd": 0.20904599999999995
+}
