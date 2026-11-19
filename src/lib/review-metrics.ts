@@ -1,15 +1,26 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { and, count, desc, eq, gte, inArray, isNotNull, lte, min, ne, sum } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull, isNull, lte, ne, sql, sum, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db";
-import { aiCalls, ESCALATION_REASONS, matchingDecisions, problems, requests, type EscalationReason } from "@/db/schema";
-import { appSpendToday, startOfUtcDay } from "@/lib/ai-controls";
+import {
+  aiCalls,
+  ESCALATION_REASONS,
+  matchingDecisions,
+  problems,
+  requests,
+  type AiCallOutcome,
+  type EscalationReason,
+  type MatcherOutcome,
+  type Verdict,
+} from "@/db/schema";
+import { appSpendToday, onUtcDayOf } from "@/lib/ai-controls";
 import { aiDailyBudgetUsd } from "@/lib/config";
 
 /**
- * The `/review` metrics (spec user stories 16–17, metrics ticket 07): pure queries over the
- * database, each returning its n so the page can show it and apply the "too few" rule.
+ * The `/review` metrics (build ticket 09; definitions in the metrics wayfinding ticket, spec user
+ * stories 16–17): pure queries over the database, each returning its n so the page can show it
+ * and apply the "too few" rule.
  */
 
 /** Windows and the "too few" threshold. */
@@ -36,13 +47,23 @@ export function windowStart(now: Date, days: number): Date {
   return new Date(now.getTime() - days * DAY_MS);
 }
 
+/** The "too few" rule: `value` for an n of at least `minN`, otherwise null. */
+function ifEnough<T>(n: number, value: () => T): T | null {
+  return n >= REVIEW_METRICS.minN ? value() : null;
+}
+
 function rate(count: number, n: number): Rate {
-  return { n, count, value: n >= REVIEW_METRICS.minN ? count / n : null };
+  return { n, count, value: ifEnough(n, () => count / n) };
+}
+
+/** A share as a whole percentage: "80%". */
+export function formatPercent(share: number): string {
+  return `${Math.round(share * 100)}%`;
 }
 
 /** A share as shown: "80%", or "n = 4, too few" below `minN`. */
 export function formatShare(share: Rate): string {
-  return share.value === null ? tooFew(share.n) : `${Math.round(share.value * 100)}%`;
+  return share.value === null ? tooFew(share.n) : formatPercent(share.value);
 }
 
 /** What a stat shows instead of a number when its n is below `minN`. */
@@ -50,50 +71,51 @@ export function tooFew(n: number): string {
   return `n = ${n}, too few`;
 }
 
-type ReviewedDecision = { verdict: string | null; matcherOutcome: string; reasons: EscalationReason[] | null };
-
-/** Reviewed Matching decisions, newest review first. */
-function reviewedNewestFirst(db: Db): ReviewedDecision[] {
-  return db
-    .select({
-      verdict: matchingDecisions.verdict,
-      matcherOutcome: matchingDecisions.matcherOutcome,
-      reasons: matchingDecisions.escalationReasons,
-    })
-    .from(matchingDecisions)
-    .where(and(isNotNull(matchingDecisions.verdict), isNotNull(matchingDecisions.reviewedAt)))
-    .orderBy(desc(matchingDecisions.reviewedAt), desc(matchingDecisions.id))
-    .all();
-}
-
-/** Bypassed decisions (the Matcher didn't answer) say nothing about the Matcher, so both agreement rates skip them. */
-function isBypassed(d: ReviewedDecision): boolean {
-  return d.matcherOutcome !== "ok" || (d.reasons ?? []).includes("bypassed");
-}
-
-function agreement(db: Db, include: (d: ReviewedDecision) => boolean): Rate {
-  const window = reviewedNewestFirst(db)
-    .filter((d) => !isBypassed(d) && include(d))
-    .slice(0, REVIEW_METRICS.agreementWindow);
-  return rate(window.filter((d) => d.verdict === "confirm").length, window.length);
-}
+export type AgreementRates = {
+  /** PM agreement rate: over reviewed spot checks. */
+  spotCheck: Rate;
+  /** Escalation agreement: over reviewed Escalations other than spot checks. */
+  escalation: Rate;
+};
 
 /**
- * PM agreement rate: Confirms ÷ reviewed spot checks, over the last 30 reviewed spot checks.
- * Spot checks are a random sample of decisions that would otherwise be Auto-accepted, so they
- * measure the Matcher without the hard-case bias of the other Escalations.
+ * Both agreement rates, from one bounded query: Confirms ÷ reviewed decisions, over the last 30
+ * reviewed (newest `reviewed_at` first) in each group.
+ *
+ * - **PM agreement rate** covers spot checks: a random sample of decisions that would otherwise be
+ *   Auto-accepted, so it measures the Matcher without the hard-case bias of other Escalations.
+ * - **Escalation agreement** is the same measure over Escalations other than spot checks (the hard
+ *   cases), so it runs lower; read it beside the PM agreement rate, not instead of it.
+ *
+ * Bypassed decisions (the Matcher didn't answer: `matcher_outcome` isn't ok, or a `bypassed`
+ * reason) say nothing about the Matcher, so both skip them. Auto-accepted decisions (no reasons)
+ * a PM reviewed anyway, and decisions without computed reasons, are in neither.
  */
-export function pmAgreementRate(db: Db): Rate {
-  return agreement(db, (d) => (d.reasons ?? []).includes("spot_check"));
-}
-
-/**
- * Escalation agreement: the same measure over reviewed Escalations other than spot checks (the
- * hard cases), last 30. Read beside the PM agreement rate, not instead of it: Escalations are
- * hard by design, so this runs lower.
- */
-export function escalationAgreementRate(db: Db): Rate {
-  return agreement(db, (d) => (d.reasons ?? []).some((r) => r !== "spot_check"));
+export function agreementRates(db: Db): AgreementRates {
+  const rows = db.all<{ spotCheck: 0 | 1; verdict: Verdict }>(sql`
+    select spot_check as spotCheck, verdict from (
+      select
+        d.verdict,
+        exists (select 1 from json_each(d.escalation_reasons) where value = 'spot_check') as spot_check,
+        row_number() over (
+          partition by exists (select 1 from json_each(d.escalation_reasons) where value = 'spot_check')
+          order by d.reviewed_at desc, d.id desc
+        ) as position
+      from ${matchingDecisions} d
+      where d.verdict is not null
+        and d.reviewed_at is not null
+        and d.matcher_outcome = ${"ok" satisfies MatcherOutcome}
+        and d.escalation_reasons is not null
+        and json_array_length(d.escalation_reasons) > 0
+        and not exists (select 1 from json_each(d.escalation_reasons) where value = ${"bypassed" satisfies EscalationReason})
+    )
+    where position <= ${REVIEW_METRICS.agreementWindow}
+  `);
+  const of = (spotCheck: boolean): Rate => {
+    const group = rows.filter((r) => Boolean(r.spotCheck) === spotCheck);
+    return rate(group.filter((r) => r.verdict === "confirm").length, group.length);
+  };
+  return { spotCheck: of(true), escalation: of(false) };
 }
 
 export type EscalationRate = Rate & {
@@ -125,25 +147,31 @@ export function escalationRate(db: Db, now: Date): EscalationRate {
   return { ...rate(reasonLists.filter((list) => list.length > 0).length, reasonLists.length), reasons };
 }
 
+/** Regression cases marked, of `corrections` (Move and Split reviews) in the same window. */
+export type RegressionCases = { marked: number; corrections: number };
+
 /**
  * Regression cases marked: Match reviews in the last 30 days that the PM marked as a Regression
- * case. The mark is set with the review, so its review time is when it was marked. "Marked", not
- * "added": the app can't see whether `npm run eval:pull` exported it or anyone committed it.
+ * case, beside the Move and Split reviews in that window (the reviews that default to marked). The
+ * mark is set with the review, so its review time is when it was marked. "Marked", not "added":
+ * the app can't see whether `npm run eval:pull` exported it or anyone committed it.
  */
-export function regressionCasesMarked(db: Db, now: Date): number {
-  return (
-    db
-      .select({ n: count() })
-      .from(matchingDecisions)
-      .where(
-        and(
-          eq(matchingDecisions.regressionCase, true),
-          gte(matchingDecisions.reviewedAt, windowStart(now, REVIEW_METRICS.regressionDays)),
-          lte(matchingDecisions.reviewedAt, now),
-        ),
-      )
-      .get()?.n ?? 0
-  );
+export function regressionCasesMarked(db: Db, now: Date): RegressionCases {
+  const row = db
+    .select({
+      marked: sql<number>`coalesce(sum(${matchingDecisions.regressionCase}), 0)`,
+      corrections: sql<number>`coalesce(sum(${matchingDecisions.verdict} in ('move', 'split')), 0)`,
+    })
+    .from(matchingDecisions)
+    .where(
+      and(
+        isNotNull(matchingDecisions.verdict),
+        gte(matchingDecisions.reviewedAt, windowStart(now, REVIEW_METRICS.regressionDays)),
+        lte(matchingDecisions.reviewedAt, now),
+      ),
+    )
+    .get();
+  return { marked: Number(row?.marked ?? 0), corrections: Number(row?.corrections ?? 0) };
 }
 
 /** Today's (UTC) app AI spend against the daily budget, or `ok: false` if the budget is misconfigured. */
@@ -161,21 +189,19 @@ export function spendToday(db: Db, now: Date): SpendToday {
 
 /** App AI calls refused today (UTC), never sent: over budget, and switched off. */
 export function refusalsToday(db: Db, now: Date): { budget: number; off: number } {
-  const start = startOfUtcDay(now);
   const rows = db
     .select({ outcome: aiCalls.outcome, n: count() })
     .from(aiCalls)
     .where(
       and(
         eq(aiCalls.source, "app"),
-        inArray(aiCalls.outcome, ["refused_budget", "refused_off"]),
-        gte(aiCalls.time, start),
-        lte(aiCalls.time, new Date(start.getTime() + DAY_MS - 1)),
+        inArray(aiCalls.outcome, ["refused_budget", "refused_off"] satisfies AiCallOutcome[]),
+        onUtcDayOf(now),
       ),
     )
     .groupBy(aiCalls.outcome)
     .all();
-  const of = (outcome: string) => rows.find((r) => r.outcome === outcome)?.n ?? 0;
+  const of = (outcome: AiCallOutcome) => rows.find((r) => r.outcome === outcome)?.n ?? 0;
   return { budget: of("refused_budget"), off: of("refused_off") };
 }
 
@@ -184,7 +210,8 @@ export type CostPerRequest = { n: number; totalUsd: number; value: number | null
 
 /**
  * Cost per Request: the Matcher and Evaluator AI calls for Requests submitted in the last 7 days,
- * ÷ those Requests. Calls from eval runs are left out; app and seed calls count.
+ * ÷ those Requests. Calls from eval runs are left out; app and seed calls both count (unlike
+ * today's spend, which is app calls only), so seeded Requests aren't priced at $0.
  *
  * Attribution: a Matcher call relates to its Request (`related_type = 'request'`, linked when the
  * Request is saved), so it is counted directly. An Evaluator call relates to a Problem, not a
@@ -195,20 +222,17 @@ export type CostPerRequest = { n: number; totalUsd: number; value: number | null
  */
 export function costPerRequest(db: Db, now: Date): CostPerRequest {
   const start = windowStart(now, REVIEW_METRICS.costPerRequestDays);
-  const recent = db
-    .select({ id: requests.id, problemId: requests.problemId })
-    .from(requests)
-    .where(and(gte(requests.createdAt, start), lte(requests.createdAt, now)))
-    .all();
-  if (recent.length === 0) return { n: 0, totalUsd: 0, value: null };
-  const total = (where: ReturnType<typeof and>) =>
+  const inWindow = and(gte(requests.createdAt, start), lte(requests.createdAt, now));
+  const n = db.select({ n: count() }).from(requests).where(inWindow).get()?.n ?? 0;
+  if (n === 0) return { n: 0, totalUsd: 0, value: null };
+  const total = (where: SQL | undefined) =>
     Number(db.select({ total: sum(aiCalls.costUsd) }).from(aiCalls).where(where).get()?.total ?? 0);
   const matcherUsd = total(
     and(
       eq(aiCalls.module, "matcher"),
       ne(aiCalls.source, "eval"),
       eq(aiCalls.relatedType, "request"),
-      inArray(aiCalls.relatedId, recent.map((r) => r.id)),
+      inArray(aiCalls.relatedId, db.select({ id: requests.id }).from(requests).where(inWindow)),
     ),
   );
   const evaluatorUsd = total(
@@ -216,20 +240,24 @@ export function costPerRequest(db: Db, now: Date): CostPerRequest {
       eq(aiCalls.module, "evaluator"),
       ne(aiCalls.source, "eval"),
       eq(aiCalls.relatedType, "problem"),
-      inArray(aiCalls.relatedId, [...new Set(recent.map((r) => r.problemId))]),
+      inArray(aiCalls.relatedId, db.selectDistinct({ id: requests.problemId }).from(requests).where(inWindow)),
       gte(aiCalls.time, start),
       lte(aiCalls.time, now),
     ),
   );
   const totalUsd = matcherUsd + evaluatorUsd;
-  const n = recent.length;
-  return { n, totalUsd, value: n >= REVIEW_METRICS.minN ? totalUsd / n : null };
+  return { n, totalUsd, value: ifEnough(n, () => totalUsd / n) };
 }
 
 /** The last committed eval run's headline numbers. Eval, not production. */
 export type EvalBaseline = { commit: string; date: Date; f1: number; caseAccuracy: number };
 
-export const EVAL_BASELINE_PATH = path.join(process.cwd(), "evals", "baseline.json");
+/**
+ * Read relative to the working directory, so `next start` must run from the project root (as
+ * `src/db` assumes for `drizzle/`). Not traced into the build output: a standalone deployment
+ * would need `evals/baseline.json` copied beside it, or shows "No baseline".
+ */
+export const EVAL_BASELINE_PATH = path.join(/* turbopackIgnore: true */ process.cwd(), "evals", "baseline.json");
 
 const baselineSchema = z.object({
   commit: z.string(),
@@ -259,57 +287,36 @@ export function readEvalBaseline(file = EVAL_BASELINE_PATH): EvalBaseline | null
 }
 
 /**
- * Time to decision: over `n` decided (non-Open) Problems with a decision time, the median days
- * from the first Request to it; null when n is below `minN`. `decided` counts every non-Open
- * Problem.
+ * Time to decision: over `n` Problems with a recorded first decision, the median days from the
+ * first Request to it; null when n is below `minN`. `untimed` counts the non-Open Problems with no
+ * recorded time (decided before it was recorded).
  */
-export type TimeToDecision = { n: number; medianDays: number | null; decided: number };
+export type TimeToDecision = { n: number; medianDays: number | null; untimed: number };
 
 /**
- * Time to decision: the median days from a Problem's first Request to its first non-Open Status.
- *
- * Proxy: there's no Status history (a Status change overwrites `problems.status`, with no
- * timestamp), so a Problem's decision time is its first Decision-note draft, the earliest
- * `decision_note` AI call related to it (any outcome; a PM drafts the note while changing Status).
- * Only Problems that are non-Open now and have such a call are timed; a decision made without a
- * draft isn't, and a draft made for a later Status change overstates the time.
+ * Time to decision: the median days from a Problem's first Request to its first non-Open Status
+ * (`first_decided_at`, set once by `changeStatus`). Problems decided before that field existed
+ * have no recorded time and aren't counted; a Problem reopened since still counts its first
+ * decision.
  */
 export function timeToDecision(db: Db): TimeToDecision {
-  const decided = db
-    .select({ id: problems.id })
+  const timed = db
+    .select({ decidedAt: problems.firstDecidedAt, firstRequestAt: sql<number>`min(${requests.createdAt})` })
     .from(problems)
-    .where(ne(problems.status, "open"))
-    .all()
-    .map((p) => p.id);
-  if (decided.length === 0) return { n: 0, medianDays: null, decided: 0 };
-  const firstRequest = new Map(
-    db
-      .select({ problemId: requests.problemId, at: min(requests.createdAt) })
-      .from(requests)
-      .where(inArray(requests.problemId, decided))
-      .groupBy(requests.problemId)
-      .all()
-      .map((r) => [r.problemId, r.at]),
-  );
-  const firstDraft = db
-    .select({ problemId: aiCalls.relatedId, at: min(aiCalls.time) })
-    .from(aiCalls)
-    .where(
-      and(
-        eq(aiCalls.module, "decision_note"),
-        ne(aiCalls.source, "eval"),
-        eq(aiCalls.relatedType, "problem"),
-        inArray(aiCalls.relatedId, decided),
-      ),
-    )
-    .groupBy(aiCalls.relatedId)
+    .innerJoin(requests, eq(requests.problemId, problems.id))
+    .where(isNotNull(problems.firstDecidedAt))
+    .groupBy(problems.id)
     .all();
-  const days = firstDraft.flatMap(({ problemId, at }) => {
-    const first = problemId === null ? undefined : firstRequest.get(problemId);
-    if (!first || !at) return [];
-    return [Math.max(0, (new Date(at).getTime() - new Date(first).getTime()) / DAY_MS)];
-  });
-  return { n: days.length, medianDays: days.length >= REVIEW_METRICS.minN ? median(days) : null, decided: decided.length };
+  const days = timed.map(({ decidedAt, firstRequestAt }) =>
+    Math.max(0, ((decidedAt?.getTime() ?? 0) - Number(firstRequestAt)) / DAY_MS),
+  );
+  const untimed =
+    db
+      .select({ n: count() })
+      .from(problems)
+      .where(and(ne(problems.status, "open"), isNull(problems.firstDecidedAt)))
+      .get()?.n ?? 0;
+  return { n: days.length, medianDays: ifEnough(days.length, () => median(days)), untimed };
 }
 
 function median(values: number[]): number {

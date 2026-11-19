@@ -20,7 +20,7 @@ import {
   type Verdict,
 } from "@/db/schema";
 import {
-  escalationAgreementRate,
+  agreementRates,
   costPerRequest,
   formatShare,
   decisionNoteShare,
@@ -28,7 +28,6 @@ import {
   readEvalBaseline,
   timeToDecision,
   escalationRate,
-  pmAgreementRate,
   refusalsToday,
   spendToday,
   regressionCasesMarked,
@@ -90,24 +89,24 @@ function spotChecks(count: number, verdict: Verdict, days = 1) {
   }
 }
 
-describe("pmAgreementRate", () => {
+describe("agreementRates: the PM agreement rate (spot checks)", () => {
   it("is Confirms ÷ reviewed spot checks", () => {
     spotChecks(8, "confirm");
     spotChecks(2, "move", 2);
-    expect(pmAgreementRate(db)).toEqual({ n: 10, count: 8, value: 0.8 });
+    expect(agreementRates(db).spotCheck).toEqual({ n: 10, count: 8, value: 0.8 });
   });
 
   it("covers exactly the last 30 reviewed spot checks: the 31st-newest is out", () => {
     spotChecks(30, "confirm", 1);
     spotChecks(5, "split", 5); // reviewed earlier than all 30 Confirms
-    expect(pmAgreementRate(db)).toEqual({ n: 30, count: 30, value: 1 });
+    expect(agreementRates(db).spotCheck).toEqual({ n: 30, count: 30, value: 1 });
   });
 
   it("shows too few (no value) with fewer than 10 spot checks, and has its n at exactly 10", () => {
     spotChecks(9, "confirm");
-    expect(pmAgreementRate(db)).toEqual({ n: 9, count: 9, value: null });
+    expect(agreementRates(db).spotCheck).toEqual({ n: 9, count: 9, value: null });
     spotChecks(1, "move", 3);
-    expect(pmAgreementRate(db)).toEqual({ n: 10, count: 9, value: 0.9 });
+    expect(agreementRates(db).spotCheck).toEqual({ n: 10, count: 9, value: 0.9 });
   });
 
   it("ignores unreviewed spot checks, other Escalations and Auto-accepted decisions", () => {
@@ -115,35 +114,35 @@ describe("pmAgreementRate", () => {
     decision({ reasons: ["spot_check"] });
     decision({ reasons: ["low_confidence"], verdict: "move" });
     decision({ reasons: [], verdict: "split" });
-    expect(pmAgreementRate(db)).toEqual({ n: 10, count: 10, value: 1 });
+    expect(agreementRates(db).spotCheck).toEqual({ n: 10, count: 10, value: 1 });
   });
 
   it("excludes Bypassed decisions", () => {
     spotChecks(10, "confirm");
     decision({ reasons: ["spot_check"], matcherOutcome: "failed", verdict: "move" });
-    expect(pmAgreementRate(db).n).toBe(10);
+    expect(agreementRates(db).spotCheck.n).toBe(10);
   });
 
   it("is empty with no reviews", () => {
-    expect(pmAgreementRate(db)).toEqual({ n: 0, count: 0, value: null });
+    expect(agreementRates(db).spotCheck).toEqual({ n: 0, count: 0, value: null });
   });
 });
 
-describe("escalationAgreementRate", () => {
+describe("agreementRates: Escalation agreement", () => {
   it("is Confirms ÷ reviewed Escalations other than spot checks, excluding Bypassed ones", () => {
     for (let i = 0; i < 6; i++) decision({ reasons: ["low_confidence"], verdict: "confirm" });
     for (let i = 0; i < 4; i++) decision({ reasons: ["mine_is_different", "near_miss"], verdict: "split" });
     decision({ reasons: ["bypassed"], matcherOutcome: "budget", verdict: "confirm" });
     spotChecks(5, "confirm");
     decision({ reasons: [], verdict: "move" }); // Auto-accepted, reviewed anyway
-    expect(escalationAgreementRate(db)).toEqual({ n: 10, count: 6, value: 0.6 });
+    expect(agreementRates(db).escalation).toEqual({ n: 10, count: 6, value: 0.6 });
   });
 
   it("covers the last 30 reviewed Escalations", () => {
     for (let i = 0; i < 31; i++) {
       decision({ reasons: ["low_confidence"], verdict: i === 30 ? "move" : "confirm", reviewedAt: daysAgo(1 + i) });
     }
-    expect(escalationAgreementRate(db)).toEqual({ n: 30, count: 30, value: 1 });
+    expect(agreementRates(db).escalation).toEqual({ n: 30, count: 30, value: 1 });
   });
 });
 
@@ -185,16 +184,18 @@ describe("escalationRate", () => {
 });
 
 describe("regressionCasesMarked", () => {
-  it("counts decisions marked as Regression cases with a Match review in the last 30 days", () => {
+  it("counts Match reviews in the last 30 days marked as Regression cases, of the Move and Split reviews then", () => {
     decision({ reasons: ["low_confidence"], verdict: "move", regressionCase: true, reviewedAt: daysAgo(1) });
     decision({ reasons: ["near_miss"], verdict: "split", regressionCase: true, reviewedAt: daysAgo(30) });
     decision({ reasons: ["near_miss"], verdict: "split", regressionCase: true, reviewedAt: new Date(daysAgo(30).getTime() - 1) });
     decision({ reasons: ["near_miss"], verdict: "split", regressionCase: false, reviewedAt: daysAgo(2) });
-    expect(regressionCasesMarked(db, NOW)).toBe(2);
+    decision({ reasons: ["low_confidence"], verdict: "confirm", regressionCase: true, reviewedAt: daysAgo(3) });
+    decision({ reasons: ["low_confidence"], verdict: "confirm", reviewedAt: daysAgo(3) });
+    expect(regressionCasesMarked(db, NOW)).toEqual({ marked: 3, corrections: 3 });
   });
 
-  it("is zero with none marked", () => {
-    expect(regressionCasesMarked(db, NOW)).toBe(0);
+  it("is zero with no reviews", () => {
+    expect(regressionCasesMarked(db, NOW)).toEqual({ marked: 0, corrections: 0 });
   });
 });
 
@@ -294,6 +295,25 @@ describe("costPerRequest", () => {
     expect(costPerRequest(db, NOW)).toMatchObject({ n: 1, totalUsd: 0.01, value: null });
   });
 
+  it("counts only Evaluator calls made inside the window, from exactly 7 days ago to now", () => {
+    requestsOn(10, problemId, 1);
+    const evaluator = (time: Date) => aiCall({ module: "evaluator", costUsd: 0.1, related: { type: "problem", id: problemId }, time });
+    evaluator(daysAgo(7));
+    evaluator(new Date(daysAgo(7).getTime() - 1));
+    evaluator(new Date(NOW.getTime() + 1));
+    const result = costPerRequest(db, NOW);
+    expect(result.totalUsd).toBeCloseTo(0.1);
+    expect(result.value).toBeCloseTo(0.01);
+  });
+
+  it("shows too few with fewer than 10 Requests, and has a value at 10", () => {
+    const ids = requestsOn(9, problemId);
+    for (const id of ids) aiCall({ costUsd: 0.02, related: { type: "request", id } });
+    expect(costPerRequest(db, NOW)).toMatchObject({ n: 9, value: null });
+    requestsOn(1, problemId);
+    expect(costPerRequest(db, NOW).value).toBeCloseTo(0.018);
+  });
+
   it("is empty with no recent Requests", () => {
     expect(costPerRequest(db, NOW)).toEqual({ n: 0, totalUsd: 0, value: null });
   });
@@ -326,34 +346,37 @@ describe("the eval baseline", () => {
 });
 
 describe("timeToDecision", () => {
-  /** A Problem with `status`, its first Request `firstDaysAgo` days ago and a Decision-note draft `draftDaysAgo` days ago. */
-  function decided(firstDaysAgo: number, draftDaysAgo: number | null, status: "planned" | "open" = "planned") {
-    const id = db.insert(problems).values({ title: "P", need: "N", status }).returning().get().id;
+  /** A Problem first decided `decidedDaysAgo` days ago (null: never recorded), its first Request `firstDaysAgo` days ago. */
+  function problemDecided(firstDaysAgo: number, decidedDaysAgo: number | null, status: "planned" | "open" = "planned") {
+    const id = db
+      .insert(problems)
+      .values({ title: "P", need: "N", status, firstDecidedAt: decidedDaysAgo === null ? null : daysAgo(decidedDaysAgo) })
+      .returning()
+      .get().id;
     decision({ onProblem: id, createdAt: daysAgo(firstDaysAgo) });
     decision({ onProblem: id, createdAt: daysAgo(firstDaysAgo - 0.5) }); // a later Request
-    if (draftDaysAgo !== null) {
-      aiCall({ module: "decision_note", related: { type: "problem", id }, time: daysAgo(draftDaysAgo) });
-      aiCall({ module: "decision_note", related: { type: "problem", id }, time: daysAgo(draftDaysAgo - 0.25) });
-    }
     return id;
   }
 
-  it("is the median days from a decided Problem's first Request to its first Decision-note draft", () => {
-    for (let i = 1; i <= 11; i++) decided(i + 2, 2); // 1, 2, …, 11 days
-    decided(20, 1, "open"); // not decided
-    decided(20, null); // decided, but no draft: no decision time
-    expect(timeToDecision(db)).toEqual({ n: 11, medianDays: 6, decided: 12 });
+  it("is the median days from a Problem's first Request to its first non-Open Status", () => {
+    for (let i = 1; i <= 11; i++) problemDecided(i + 2, 2); // 1, 2, …, 11 days
+    problemDecided(20, 1, "open"); // reopened since: its first decision still counts (19 days)
+    problemDecided(20, null); // decided before the time was recorded
+    problemDecided(20, null, "open"); // never decided
+    expect(timeToDecision(db)).toEqual({ n: 12, medianDays: 6.5, untimed: 1 });
   });
 
-  it("takes the mean of the middle two with an even n", () => {
-    for (let i = 1; i <= 10; i++) decided(i + 2, 2);
-    expect(timeToDecision(db)).toMatchObject({ n: 10, medianDays: 5.5 });
+  it("takes the middle value with an odd n", () => {
+    for (let i = 1; i <= 11; i++) problemDecided(i + 2, 2);
+    expect(timeToDecision(db)).toMatchObject({ n: 11, medianDays: 6 });
   });
 
   it("shows too few with fewer than 10 timed decisions, and is empty with none", () => {
-    expect(timeToDecision(db)).toEqual({ n: 0, medianDays: null, decided: 0 });
-    decided(5, 1);
-    expect(timeToDecision(db)).toEqual({ n: 1, medianDays: null, decided: 1 });
+    expect(timeToDecision(db)).toEqual({ n: 0, medianDays: null, untimed: 0 });
+    for (let i = 1; i <= 9; i++) problemDecided(i + 2, 2);
+    expect(timeToDecision(db)).toEqual({ n: 9, medianDays: null, untimed: 0 });
+    problemDecided(12, 2);
+    expect(timeToDecision(db)).toMatchObject({ n: 10, medianDays: 5.5 });
   });
 });
 
@@ -369,8 +392,10 @@ describe("decisionNoteShare", () => {
     expect(decisionNoteShare(db)).toEqual({ n: 10, count: 7, value: 0.7 });
   });
 
-  it("is empty with no decided Problems", () => {
+  it("is empty with no decided Problems, and too few below 10", () => {
     expect(decisionNoteShare(db)).toEqual({ n: 0, count: 0, value: null });
+    db.insert(problems).values({ title: "P", need: "N", status: "shipped", decisionNote: "Done." }).run();
+    expect(decisionNoteShare(db)).toEqual({ n: 1, count: 1, value: null });
   });
 });
 

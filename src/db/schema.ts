@@ -99,6 +99,11 @@ export const problems = sqliteTable("problems", {
   status: text("status", { enum: STATUSES }).notNull().default("open"),
   decisionNote: text("decision_note"),
   createdAt: createdAt(),
+  /**
+   * When the Problem first left Open (its first non-Open Status): set once, never overwritten.
+   * Null while it's Open, and for Problems decided before this field existed (history unknown).
+   */
+  firstDecidedAt: integer("first_decided_at", { mode: "timestamp_ms" }),
 
   // AI evaluation: each criterion is a 1–5 score plus a one-line reason.
   // Null until the Evaluator has run. Demand is never stored.

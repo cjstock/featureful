@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { problems, STATUSES, type Status } from "@/db/schema";
@@ -26,12 +26,23 @@ export const statusChangeSchema = z.object({
 
 export type StatusChange = z.infer<typeof statusChangeSchema>;
 
-/** Saves Status and Decision note together. Returns false if no such Problem. */
-export function changeStatus(db: Db, problemId: number, input: StatusChange): boolean {
+/**
+ * Saves Status and Decision note together. The first time the Problem leaves Open, records when
+ * (`firstDecidedAt`, never overwritten). Returns false if no such Problem.
+ */
+export function changeStatus(db: Db, problemId: number, input: StatusChange, now = new Date()): boolean {
   const { status, note } = statusChangeSchema.parse(input);
   const result = db
     .update(problems)
-    .set({ status, decisionNote: note })
+    .set({
+      status,
+      decisionNote: note,
+      // Only when it's leaving Open: a Problem already decided before this field existed keeps
+      // an unknown (null) time rather than a wrong one. SET reads the row's old values.
+      ...(status !== "open" && {
+        firstDecidedAt: sql`case when ${problems.status} = 'open' then coalesce(${problems.firstDecidedAt}, ${now.getTime()}) else ${problems.firstDecidedAt} end`,
+      }),
+    })
     .where(eq(problems.id, problemId))
     .run();
   return result.changes > 0;

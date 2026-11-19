@@ -1,7 +1,7 @@
 /**
  * A migration must apply to a database that already holds data, without losing any of it.
  * Each test builds a database at an earlier migration (v1: up to 0001; before the cut: up to
- * 0002; after the cut: up to 0003; Escalation: up to 0004) with data in it, then runs every migration on it, as `getDb` does on startup.
+ * 0002; after the cut: up to 0003; Escalation: up to 0004; AI controls: up to 0005) with data in it, then runs every migration on it, as `getDb` does on startup.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -13,11 +13,13 @@ import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDb, MIGRATIONS_FOLDER } from "@/db";
 import * as schema from "@/db/schema";
+import { changeStatus } from "@/lib/decision-note";
 
 const V1_TAGS = ["0000_init", "0001_match_review"];
 const PRE_CUT_TAGS = [...V1_TAGS, "0002_ai_calls"];
 const POST_CUT_TAGS = [...PRE_CUT_TAGS, "0003_drop_boundary_note"];
 const ESCALATION_TAGS = [...POST_CUT_TAGS, "0004_escalation"];
+const AI_CONTROLS_TAGS = [...ESCALATION_TAGS, "0005_ai_controls"];
 
 let dir: string;
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -284,6 +286,48 @@ describe("migration 0005_ai_controls", () => {
       module: "brief",
       on: false,
     });
+    db.$client.close();
+    again.$client.close();
+  });
+});
+
+describe("migration 0006_problem_first_decided_at", () => {
+  it("applies to a database with data (up to 0005), leaving existing Problems' first decision time unknown", () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "featureful-migration-"));
+    const file = path.join(dir, "ai-controls.db");
+
+    // A database at 0005, with data, written with raw SQL so it doesn't depend on today's schema.
+    const before = open(file);
+    migrate(before.db, { migrationsFolder: migrationsUpTo(AI_CONTROLS_TAGS) });
+    before.sqlite.exec(`
+      INSERT INTO people (id, name, role) VALUES (1, 'Alex', 'customer');
+      INSERT INTO problems (id, title, need, status, decision_note, created_at) VALUES
+        (1, 'Repeat a brew', 'I need to.', 'open', NULL, 1),
+        (2, 'Dark theme', 'I need to.', 'planned', 'Coming soon.', 2);
+      INSERT INTO requests (id, problem_id, author_id, title, description, created_at)
+        VALUES (1, 1, 1, 'Save recipes', 'Let me save a recipe.', 1), (2, 2, 1, 'Night mode', 'Dim it.', 2);
+    `);
+    expect(columnsOf(before.sqlite, "problems")).not.toContain("first_decided_at");
+    before.sqlite.close();
+
+    const db = createDb(file);
+    const problems = () => db.select().from(schema.problems).orderBy(schema.problems.id).all();
+    expect(problems()).toMatchObject([
+      { id: 1, status: "open", firstDecidedAt: null },
+      { id: 2, status: "planned", decisionNote: "Coming soon.", firstDecidedAt: null },
+    ]);
+    expect(db.select().from(schema.requests).all()).toHaveLength(2);
+
+    // A Problem leaving Open from now on gets its time; one decided before stays unknown, even
+    // when its Status changes again (its first non-Open Status was earlier).
+    const at = new Date("2026-11-19T10:00:00.000Z");
+    changeStatus(db, 1, { status: "declined", note: "Not now." }, at);
+    changeStatus(db, 2, { status: "shipped", note: "Done." }, at);
+    expect(problems().map((p) => p.firstDecidedAt)).toEqual([at, null]);
+
+    // Running the migrations again (every startup) changes nothing.
+    const again = createDb(file);
+    expect(again.select().from(schema.problems).orderBy(schema.problems.id).all()).toEqual(problems());
     db.$client.close();
     again.$client.close();
   });

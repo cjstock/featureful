@@ -3,12 +3,12 @@ import { getDb } from "@/db/client";
 import type { Db } from "@/db";
 import { ESCALATION_REASON_LABELS } from "@/lib/escalation-labels";
 import {
+  agreementRates,
   costPerRequest,
   decisionNoteShare,
-  escalationAgreementRate,
   escalationRate,
+  formatPercent,
   formatShare,
-  pmAgreementRate,
   readEvalBaseline,
   refusalsToday,
   regressionCasesMarked,
@@ -24,14 +24,14 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 const { agreementWindow, escalationRateDays, regressionDays, costPerRequestDays } = REVIEW_METRICS;
 
 const usd = (amount: number) => `$${amount.toFixed(amount > 0 && amount < 1 ? 3 : 2)}`;
-const percent = (share: number) => `${Math.round(share * 100)}%`;
 
 function loadMetrics(db: Db, now: Date) {
+  const agreement = agreementRates(db);
   return {
-    agreement: pmAgreementRate(db),
+    agreement: agreement.spotCheck,
     escalation: escalationRate(db, now),
-    marked: regressionCasesMarked(db, now),
-    escalationAgreement: escalationAgreementRate(db),
+    regression: regressionCasesMarked(db, now),
+    escalationAgreement: agreement.escalation,
     spend: spendToday(db, now),
     cost: costPerRequest(db, now),
     refused: refusalsToday(db, now),
@@ -44,7 +44,8 @@ function loadMetrics(db: Db, now: Date) {
 /**
  * The /review metrics (PM-only, like the page): a header strip with the PM agreement rate,
  * Escalation rate and Regression cases marked, and a "Details" disclosure with the rest. Every
- * stat shows its n, its window, and what it can't tell you (a tooltip).
+ * stat shows its n, its window, and what it can't tell you (a tooltip). It has no role guard of its
+ * own: it relies on `/review`'s PM-only guard, so render it only there.
  */
 export function InboxMetrics() {
   let m: ReturnType<typeof loadMetrics>;
@@ -58,7 +59,7 @@ export function InboxMetrics() {
       </p>
     );
   }
-  const { agreement, escalation, marked, escalationAgreement, spend, cost, refused, baseline, timing, notes } = m;
+  const { agreement, escalation, regression, escalationAgreement, spend, cost, refused, baseline, timing, notes } = m;
 
   return (
     <section aria-label="Match review metrics" className="space-y-2">
@@ -77,8 +78,8 @@ export function InboxMetrics() {
         />
         <Stat
           label="Regression cases"
-          value={`${marked} marked`}
-          context={`n = ${marked} · Match reviews in the last ${regressionDays} days`}
+          value={`${regression.marked} marked`}
+          context={`of ${regression.corrections} Move/Split reviews · last ${regressionDays} days`}
           cantTell="Marked in the app only: it can't see whether they were exported with eval:pull or committed."
         />
       </dl>
@@ -106,7 +107,7 @@ export function InboxMetrics() {
             label="Cost per Request"
             value={cost.value === null ? tooFew(cost.n) : usd(cost.value)}
             context={`n = ${cost.n} Requests (${usd(cost.totalUsd)} in all) · last ${costPerRequestDays} days`}
-            cantTell="Evaluator calls are counted per Problem, so unrelated re-evaluations count; unsubmitted Matcher previews don't."
+            cantTell="Includes seed AI calls (spend is app only); Evaluator calls count per Problem, so unrelated re-evaluations count and unsubmitted previews don't."
           />
           <Stat
             label="Refused AI calls today"
@@ -116,7 +117,7 @@ export function InboxMetrics() {
           />
           <Stat
             label="Eval baseline"
-            value={baseline ? `F1 ${baseline.f1.toFixed(2)} · cases ${percent(baseline.caseAccuracy)}` : "No baseline"}
+            value={baseline ? `F1 ${baseline.f1.toFixed(2)} · cases ${formatPercent(baseline.caseAccuracy)}` : "No baseline"}
             context={
               baseline
                 ? `Last committed eval (not production) · commit ${baseline.commit.slice(0, 7)}, ${baseline.date.toISOString().slice(0, 10)}`
@@ -127,8 +128,8 @@ export function InboxMetrics() {
           <Stat
             label="Time to decision"
             value={timing.medianDays === null ? tooFew(timing.n) : `${timing.medianDays.toFixed(1)} days (median)`}
-            context={`n = ${timing.n} of ${timing.decided} decided Problems · all time`}
-            cantTell="Timed to the first Decision-note draft (there's no Status history), so decisions made without one are left out."
+            context={`n = ${timing.n} Problems with a recorded first decision · all time${timing.untimed ? ` (${timing.untimed} decided before it was recorded)` : ""}`}
+            cantTell="Problems decided before this was recorded aren't counted, and it can't tell you whether the decision was right."
           />
           <Stat
             label="Decision notes"
@@ -137,8 +138,9 @@ export function InboxMetrics() {
             cantTell="It can't tell you whether a note is any good, or whether Customers read it."
           />
           <div className="min-w-0 rounded-lg bg-muted/40 p-3 sm:col-span-2">
-            <dt className="text-xs font-medium text-muted-foreground">
+            <dt className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
               Escalation reasons · last {escalationRateDays} days (n = {escalation.n})
+              <CantTell text="A decision can have several reasons, so counts overlap; it can't tell you which reasons catch real mistakes." />
             </dt>
             <dd className="mt-1">
               {escalation.reasons.length === 0 ? (
@@ -179,12 +181,7 @@ function Stat({
     <div className="min-w-0 rounded-lg bg-muted/40 p-3">
       <dt className="flex items-center gap-1 text-xs font-medium text-muted-foreground">
         {label}
-        <Tooltip>
-          <TooltipTrigger aria-label={`What this can't tell you: ${cantTell}`} className="cursor-help rounded-sm">
-            <Info className="size-3.5" aria-hidden />
-          </TooltipTrigger>
-          <TooltipContent>{cantTell}</TooltipContent>
-        </Tooltip>
+        <CantTell text={cantTell} />
       </dt>
       <dd className="mt-1 space-y-1">
         <div className="text-lg font-semibold tabular-nums">{value}</div>
@@ -192,6 +189,18 @@ function Stat({
         <div className="text-xs text-muted-foreground">{context}</div>
       </dd>
     </div>
+  );
+}
+
+/** The one-line "what this can't tell you" tooltip on a stat. */
+function CantTell({ text }: { text: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger aria-label={`What this can't tell you: ${text}`} className="cursor-help rounded-sm">
+        <Info className="size-3.5" aria-hidden />
+      </TooltipTrigger>
+      <TooltipContent>{text}</TooltipContent>
+    </Tooltip>
   );
 }
 
