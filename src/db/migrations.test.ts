@@ -1,7 +1,7 @@
 /**
  * A migration must apply to a database that already holds data, without losing any of it.
  * Each test builds a database at an earlier migration (v1: up to 0001; before the cut: up to
- * 0002) with data in it, then runs every migration on it, as `getDb` does on startup.
+ * 0002; after the cut: up to 0003) with data in it, then runs every migration on it, as `getDb` does on startup.
  */
 import fs from "node:fs";
 import os from "node:os";
@@ -11,11 +11,12 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import { MIGRATIONS_FOLDER } from "@/db";
+import { createDb, MIGRATIONS_FOLDER } from "@/db";
 import * as schema from "@/db/schema";
 
 const V1_TAGS = ["0000_init", "0001_match_review"];
 const PRE_CUT_TAGS = [...V1_TAGS, "0002_ai_calls"];
+const POST_CUT_TAGS = [...PRE_CUT_TAGS, "0003_drop_boundary_note"];
 
 let dir: string;
 afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -153,5 +154,84 @@ describe("migration 0003_drop_boundary_note (ADR 0003)", () => {
     // AI call records from the retired Boundary-note writer stay readable.
     expect(now.db.select().from(schema.aiCalls).get()).toMatchObject({ id: 1, module: "boundary_note" });
     now.sqlite.close();
+  });
+});
+
+describe("migration 0004_escalation and its backfill", () => {
+  it("applies to a post-cut database (up to 0003) with data and computes Escalation reasons for its existing decisions", () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "featureful-migration-"));
+    const file = path.join(dir, "post-cut.db");
+
+    // A database at 0003 (Boundary notes cut), written with raw SQL so it doesn't depend on today's schema.
+    const v2 = open(file);
+    migrate(v2.db, { migrationsFolder: migrationsUpTo(POST_CUT_TAGS) });
+    v2.sqlite.exec(`
+      INSERT INTO people (id, name, role) VALUES
+        (1, 'Alex', 'customer'), (2, 'Sam', 'pm'),
+        (3, 'P3', 'customer'), (4, 'P4', 'customer'), (5, 'P5', 'customer'),
+        (6, 'P6', 'customer'), (7, 'P7', 'customer');
+      INSERT INTO problems (id, title, need, status, created_at) VALUES
+        (1, 'Repeat a brew', 'I need to repeat a good brew.', 'open', 1),
+        (2, 'Use it at night', 'I need a dark appearance.', 'open', 1),
+        (3, 'Brew timer', 'I need to time my pours.', 'open', 1);
+      -- Problem 1 has six supporters, Alex included: a high-Demand Problem.
+      INSERT INTO supports (person_id, problem_id, created_at) VALUES
+        (1, 1, 1), (3, 1, 1), (4, 1, 1), (5, 1, 1), (6, 1, 1), (7, 1, 1), (1, 2, 1), (1, 3, 1);
+      INSERT INTO requests (id, problem_id, author_id, title, description, created_at) VALUES
+        (1, 1, 1, 'Save recipes', 'Let me save a recipe.', 1),
+        (2, 3, 1, 'Pour timer', 'Time my pours.', 2),
+        (3, 2, 1, 'Dark theme', 'Too bright.', 3),
+        (4, 3, 1, 'Bloom timer', 'Time the bloom.', 4),
+        (5, 2, 1, 'Night mode', 'Dim it.', 5);
+      INSERT INTO matching_decisions
+        (id, request_id, proposed_problem_id, confidence, reason, proposed_title, proposed_need,
+         submitter_choice, created_at, verdict, reviewer_id, reviewed_at, note)
+      VALUES
+        (1, 1, 1, 0.9, 'Same need', 'Repeat a brew', 'I need to.', 'accepted', 1, NULL, NULL, NULL, NULL),
+        (2, 2, 1, 0.8, 'Looks close', 'Brew timer', 'I need to.', 'rejected', 2, NULL, NULL, NULL, NULL),
+        (3, 3, 2, 0.6, 'Maybe', 'Dark', 'I need to.', 'accepted', 3, NULL, NULL, NULL, NULL),
+        (4, 4, 1, 0.8, 'Looks close', 'Brew timer', 'I need to.', 'rejected', 4, 'confirm', 2, 5, 'Right'),
+        (5, 5, 2, 0.95, 'Same need', 'Dark', 'I need to.', 'accepted', 5, NULL, NULL, NULL, NULL);
+    `);
+    v2.sqlite.close();
+
+    // Today's migrations, then the backfill, as the app's db client opens it.
+    const db = createDb(file);
+    const decisions = () =>
+      db.select().from(schema.matchingDecisions).orderBy(schema.matchingDecisions.id).all();
+
+    expect(decisions().map((d) => d.escalationReasons)).toEqual([
+      ["high_demand_merge"],
+      ["mine_is_different"],
+      ["low_confidence"],
+      ["mine_is_different"], // reviewed decisions get reasons too, for the Matching example rule
+      [], // decision 5 is outside the spot-check sample
+    ]);
+    expect(decisions()[0]).toMatchObject({
+      matcherOutcome: "ok",
+      closestProblemId: null,
+      closestConfidence: null,
+      regressionCase: false,
+      verdict: null,
+      reason: "Same need",
+    });
+    expect(decisions()[3]).toMatchObject({ verdict: "confirm", note: "Right" });
+    expect(db.select().from(schema.supports).all()).toHaveLength(8);
+
+    // Running it again (every startup) changes nothing.
+    const before = decisions();
+    const again = createDb(file);
+    expect(again.select().from(schema.matchingDecisions).orderBy(schema.matchingDecisions.id).all()).toEqual(before);
+
+    // Deleting a decision's closest Problem clears the link rather than blocking the delete.
+    db.update(schema.matchingDecisions)
+      .set({ closestProblemId: 3, closestConfidence: 0.5 })
+      .where(eq(schema.matchingDecisions.id, 1))
+      .run();
+    db.delete(schema.problems).where(eq(schema.problems.id, 3)).run();
+    expect(decisions()[0]).toMatchObject({ closestProblemId: null, closestConfidence: 0.5 });
+
+    db.$client.close();
+    again.$client.close();
   });
 });

@@ -63,6 +63,17 @@ export type TokenUsage = {
 const NO_TOKENS: TokenUsage = { input: { noCache: 0, cacheRead: 0, cacheWrite: 0 }, output: 0 };
 const PER_TOKEN = 1 / 1_000_000;
 
+/** The AI call recorded for each error `aiGenerate` threw (the error itself is rethrown unchanged). */
+const recordedFailures = new WeakMap<object, { id: number; outcome: AiCallOutcome }>();
+
+/**
+ * The AI call record `aiGenerate` wrote for an error it threw: its id and outcome (e.g.
+ * `refused_budget`). Undefined for any other error, or if the record couldn't be written.
+ */
+export function failedAiCall(error: unknown): { id: number; outcome: AiCallOutcome } | undefined {
+  return typeof error === "object" && error !== null ? recordedFailures.get(error) : undefined;
+}
+
 /** A short hash of a module's system prompt: the prompt version. */
 export function promptVersion(system: string): string {
   return createHash("sha256").update(system).digest("hex").slice(0, 8);
@@ -168,7 +179,8 @@ export async function aiGenerate<S extends z.ZodType>(
   /** Record a failed AI call, then throw `error` itself, even if the record can't be written. */
   const fail = (outcome: AiCallOutcome, error: unknown, fields: Parameters<typeof record>[1] = {}): never => {
     try {
-      record(outcome, { ...fields, error: fields.error ?? errorMessage(error) });
+      const { id } = record(outcome, { ...fields, error: fields.error ?? errorMessage(error) });
+      if (typeof error === "object" && error !== null) recordedFailures.set(error, { id, outcome });
     } catch (recordError) {
       console.error(`Couldn't record a ${outcome} ${module} AI call`, recordError);
     }

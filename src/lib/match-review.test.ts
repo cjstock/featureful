@@ -3,7 +3,11 @@ import { eq } from "drizzle-orm";
 import { createDb, type Db } from "@/db";
 import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
-import { createMatchReview } from "@/lib/match-review";
+import type { EscalationReason } from "@/db/schema";
+import { createMatchReview, listMatchingExamples } from "@/lib/match-review";
+
+/** A Move or Split note (required). */
+const NOTE = "Different underlying need.";
 
 const NEW_PROBLEM = { title: "Log cupping sessions", need: "I need to record how a coffee tasted." };
 
@@ -45,13 +49,14 @@ function setup() {
 }
 
 describe("Match review queue", () => {
-  it("listQueue shows unreviewed Matching decisions newest first, with everything needed to judge them", async () => {
+  it("listQueue shows each escalated decision with everything needed to judge it and its reasons", async () => {
     const { alex, flavour, submit, review } = setup();
     const first = await submit("Cupping notes", true);
     const second = await submit("Tasting journal", false);
 
     const queue = review.listQueue();
 
+    // Mine is different outranks low confidence.
     expect(queue.map((d) => d.request.id)).toEqual([second.requestId, first.requestId]);
     expect(queue[0]).toMatchObject({
       request: { id: second.requestId, title: "Tasting journal", description: "Tasting journal, please." },
@@ -64,13 +69,17 @@ describe("Match review queue", () => {
           reason: "Both about taste.",
         },
         newProblem: NEW_PROBLEM,
+        closestProblem: null,
       },
       submitterChoice: "rejected",
+      matcherOutcome: "ok",
+      escalationReasons: ["mine_is_different", "low_confidence"],
       currentProblem: { id: second.problemId, title: NEW_PROBLEM.title },
       review: null,
     });
     expect(queue[1]).toMatchObject({
       submitterChoice: "accepted",
+      escalationReasons: ["low_confidence"],
       currentProblem: { id: flavour.id, title: "Compare roast flavour" },
     });
     expect(review.countQueue()).toBe(2);
@@ -119,7 +128,11 @@ describe("Match review queue", () => {
     const proposal = await intake.propose(draft);
     intake.confirm(draft, proposal, { createProblem: proposal.newProblem }, alex.id);
 
-    expect(createMatchReview({ db }).listQueue()).toMatchObject([
+    const all = [
+      ...createMatchReview({ db }).listQueue(),
+      ...createMatchReview({ db }).listNotEscalated(),
+    ];
+    expect(all).toMatchObject([
       { proposal: { match: null, newProblem: NEW_PROBLEM }, submitterChoice: "no_match" },
     ]);
   });
@@ -233,7 +246,7 @@ describe("Match review: Move", () => {
     const decision = await place(alex.id, grind.id);
     await place(alex.id, grind.id, "Grind notes");
 
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+    review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
 
     expect(supportsOf(db)).toEqual(
       expect.arrayContaining([
@@ -248,7 +261,7 @@ describe("Match review: Move", () => {
     const decision = await place(alex.id, grind.id);
     await place(alex.id, flavour.id, "Flavour notes");
 
-    review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+    review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
 
     expect(supportsOf(db)).toEqual([{ personId: alex.id, problemId: flavour.id }]);
   });
@@ -261,7 +274,7 @@ describe("Match review: Split", () => {
     await place(priya.id, flavour.id, "Flavour wheel");
     const newProblem = { title: "Score cupping sessions", need: "I need to score cuppings." };
 
-    const affected = review.review(decision.id, "split", { newProblem }, sam.id);
+    const affected = review.review(decision.id, "split", { newProblem, note: NOTE }, sam.id);
 
     const created = db.select().from(problems).where(eq(problems.title, newProblem.title)).get();
     expect(created).toMatchObject({ ...newProblem, status: "open" });
@@ -285,7 +298,7 @@ describe("Match review: Split", () => {
     const { alex, sam, flavour, review, place } = setupReview();
     const decision = await place(alex.id, flavour.id);
 
-    expect(() => review.review(decision.id, "split", {}, sam.id)).toThrow();
+    expect(() => review.review(decision.id, "split", { note: NOTE }, sam.id)).toThrow();
     expect(review.countQueue()).toBe(1);
   });
 });
@@ -303,13 +316,13 @@ describe("Match review: a source left without Evidence", () => {
       .where(eq(matchingDecisions.id, other.id))
       .run();
 
-    const affected = review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id);
+    const affected = review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
 
     expect(affected).toEqual([flavour.id]);
     expect(db.select().from(problems).where(eq(problems.id, grind.id)).get()).toBeUndefined();
     expect(supportsOf(db).filter((s) => s.problemId === grind.id)).toEqual([]);
     expect(problemOf(db, decision.requestId)).toBe(flavour.id);
-    const otherItem = review.listQueue().find((i) => i.id === other.id)!;
+    const otherItem = [...review.listQueue(), ...review.listNotEscalated()].find((i) => i.id === other.id)!;
     expect(otherItem.proposal.match).toMatchObject({ problemId: null, problemTitle: null });
     expect(review.listReviewed()[0].review).toMatchObject({
       verdict: "move",
@@ -326,7 +339,7 @@ describe("Match review: refusals", () => {
     review.review(decision.id, "confirm", {}, sam.id);
 
     expect(() =>
-      review.review(decision.id, "move", { targetProblemId: grind.id }, sam.id),
+      review.review(decision.id, "move", { targetProblemId: grind.id, note: NOTE }, sam.id),
     ).toThrow(/already been reviewed/);
     expect(review.listReviewed()[0].review!.verdict).toBe("confirm");
   });
@@ -337,7 +350,7 @@ describe("Match review: refusals", () => {
     const before = requestsOf(db);
 
     expect(() =>
-      review.review(decision.id, "move", { targetProblemId: flavour.id }, sam.id),
+      review.review(decision.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id),
     ).toThrow(/already on/);
     expect(requestsOf(db)).toEqual(before);
     expect(review.countQueue()).toBe(1);
@@ -348,8 +361,127 @@ describe("Match review: refusals", () => {
     const decision = await place(alex.id, flavour.id);
     const before = { requests: requestsOf(db), supports: supportsOf(db) };
 
-    expect(() => review.review(decision.id, "move", { targetProblemId: 999 }, sam.id)).toThrow();
+    expect(() => review.review(decision.id, "move", { targetProblemId: 999, note: NOTE }, sam.id)).toThrow();
     expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
     expect(review.countQueue()).toBe(1);
+  });
+});
+
+/** Give a decision these Escalation reasons (test setup: reason computation is tested in escalation.test.ts). */
+const escalate = (db: Db, id: number, reasons: EscalationReason[]) =>
+  db.update(matchingDecisions).set({ escalationReasons: reasons }).where(eq(matchingDecisions.id, id)).run();
+
+describe("Escalation queue", () => {
+  it("lists escalated, unreviewed decisions by strongest reason, then oldest first; the rest are Not escalated", async () => {
+    const { db, alex, flavour, review, place } = setupReview();
+    const given: [string, EscalationReason[]][] = [
+      ["spot", ["spot_check"]],
+      ["near", ["near_miss"]],
+      ["low (older)", ["low_confidence"]],
+      ["bypassed", ["bypassed"]],
+      ["different", ["mine_is_different", "low_confidence"]],
+      ["auto (older)", []],
+      ["low (newer)", ["low_confidence"]],
+      ["demand", ["high_demand_merge"]],
+      ["auto (newer)", []],
+      ["reviewed", ["bypassed"]],
+    ];
+    const ids = new Map<string, number>();
+    for (const [title, reasons] of given) {
+      const d = await place(alex.id, flavour.id, title);
+      escalate(db, d.id, reasons);
+      ids.set(title, d.id);
+    }
+    review.review(ids.get("reviewed")!, "confirm", {}, alex.id);
+
+    expect(review.listQueue().map((d) => d.request.title)).toEqual([
+      "bypassed",
+      "different",
+      "demand",
+      "low (older)",
+      "low (newer)",
+      "near",
+      "spot",
+    ]);
+    expect(review.listQueue()[1].escalationReasons).toEqual(["mine_is_different", "low_confidence"]);
+    expect(review.countQueue()).toBe(7);
+    // Auto-accepted decisions, newest first, still reviewable.
+    expect(review.listNotEscalated().map((d) => d.request.title)).toEqual(["auto (newer)", "auto (older)"]);
+    review.review(ids.get("auto (older)")!, "confirm", {}, alex.id);
+    expect(review.listNotEscalated().map((d) => d.request.title)).toEqual(["auto (newer)"]);
+  });
+});
+
+describe("Match review: notes and Regression cases", () => {
+  it("refuses a Move or Split without a note, changing nothing; Confirm's note stays optional", async () => {
+    const { db, alex, sam, flavour, grind, review, place } = setupReview();
+    const decision = await place(alex.id, flavour.id);
+    const before = { requests: requestsOf(db), supports: supportsOf(db) };
+
+    for (const note of [undefined, null, "  "]) {
+      expect(() => review.review(decision.id, "move", { targetProblemId: grind.id, note }, sam.id)).toThrow(
+        /What makes these different needs/,
+      );
+      expect(() => review.review(decision.id, "split", { newProblem: NEW_PROBLEM, note }, sam.id)).toThrow(
+        /What makes these different needs/,
+      );
+    }
+    expect({ requests: requestsOf(db), supports: supportsOf(db) }).toEqual(before);
+    expect(review.review(decision.id, "confirm", {}, sam.id)).toEqual([flavour.id]);
+  });
+
+  it("marks a Move or Split as a Regression case by default, unless the PM unticks it; a Confirm is not one by default", async () => {
+    const { db, alex, priya, sam, flavour, grind, review, place } = setupReview();
+    const moved = await place(alex.id, grind.id, "Moved");
+    const split = await place(alex.id, grind.id, "Split");
+    const unmarked = await place(priya.id, grind.id, "Unmarked");
+    const confirmed = await place(priya.id, flavour.id, "Confirmed");
+
+    review.review(moved.id, "move", { targetProblemId: flavour.id, note: NOTE }, sam.id);
+    review.review(split.id, "split", { newProblem: NEW_PROBLEM, note: NOTE }, sam.id);
+    review.review(unmarked.id, "move", { targetProblemId: flavour.id, note: NOTE, regressionCase: false }, sam.id);
+    review.review(confirmed.id, "confirm", {}, sam.id);
+
+    const marks = Object.fromEntries(review.listReviewed().map((d) => [d.request.title, d.regressionCase]));
+    expect(marks).toEqual({ Moved: true, Split: true, Unmarked: false, Confirmed: false });
+    expect(db.select().from(matchingDecisions).where(eq(matchingDecisions.id, moved.id)).get()).toMatchObject({
+      regressionCase: true,
+    });
+  });
+});
+
+describe("Matching examples", () => {
+  it("keep every correction, but a Confirm only when it was escalated for an ambiguity reason", async () => {
+    const { db, alex, sam, flavour, grind, review, place } = setupReview();
+    const given: [string, EscalationReason[], "confirm" | "move"][] = [
+      ["moved, auto-accepted", [], "move"],
+      ["confirmed, auto-accepted", [], "confirm"],
+      ["confirmed, spot check", ["spot_check"], "confirm"],
+      ["confirmed, high-Demand", ["high_demand_merge"], "confirm"],
+      ["confirmed, bypassed", ["bypassed"], "confirm"],
+      ["confirmed, mine is different", ["mine_is_different"], "confirm"],
+      ["confirmed, low confidence", ["high_demand_merge", "low_confidence"], "confirm"],
+      ["confirmed, near miss", ["near_miss"], "confirm"],
+    ];
+    await place(alex.id, grind.id, "keeps grind alive");
+    for (const [title, reasons, verdict] of given) {
+      const d = await place(alex.id, grind.id, title);
+      escalate(db, d.id, reasons);
+      review.review(
+        d.id,
+        verdict,
+        verdict === "move" ? { targetProblemId: flavour.id, note: NOTE } : {},
+        sam.id,
+      );
+    }
+
+    expect(new Set(listMatchingExamples(db).map((e) => e.request.title))).toEqual(
+      new Set([
+        "moved, auto-accepted",
+        "confirmed, mine is different",
+        "confirmed, low confidence",
+        "confirmed, near miss",
+      ]),
+    );
   });
 });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { reviewMatch, type MatchReviewInput } from "@/app/actions/match-review";
 import type { Verdict } from "@/db/schema";
+import { DIFFERENT_NEEDS_QUESTION } from "@/lib/escalation-labels";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,7 +16,10 @@ type ProblemOption = { id: number; title: string };
 const listClass =
   "w-full rounded-lg border border-input bg-transparent p-1 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-/** PM only: Confirm, Move, or Split a Matching decision, with an optional note. */
+/**
+ * PM only: Confirm, Move, or Split a Matching decision. Confirm's note is optional; Move and Split
+ * need one, and are marked as Regression cases unless the PM unticks it.
+ */
 export function MatchReviewControls({
   decisionId,
   currentProblemId,
@@ -33,6 +37,7 @@ export function MatchReviewControls({
   const id = useId();
   const [mode, setMode] = useState<Verdict | null>(null);
   const [note, setNote] = useState("");
+  const [regressionCase, setRegressionCase] = useState(true);
   const [search, setSearch] = useState("");
   const [target, setTarget] = useState<number | null>(null);
   const [title, setTitle] = useState(newProblem.title);
@@ -43,6 +48,7 @@ export function MatchReviewControls({
   const open = (verdict: Verdict) => {
     setMode(verdict);
     setNote("");
+    setRegressionCase(true);
     setSearch("");
     setTarget(null);
     setTitle(newProblem.title);
@@ -58,11 +64,12 @@ export function MatchReviewControls({
     event.preventDefault();
     if (!mode) return;
     let input: MatchReviewInput;
+    if (mode !== "confirm" && !note.trim()) return setError(`${DIFFERENT_NEEDS_QUESTION} A note is required.`);
     if (mode === "move") {
       if (target === null) return setError("Choose a Problem to move the Request to");
-      input = { verdict: "move", targetProblemId: target, note };
+      input = { verdict: "move", targetProblemId: target, note, regressionCase };
     } else if (mode === "split") {
-      input = { verdict: "split", newProblem: { title, need }, note };
+      input = { verdict: "split", newProblem: { title, need }, note, regressionCase };
     } else {
       input = { verdict: "confirm", note };
     }
@@ -157,17 +164,35 @@ export function MatchReviewControls({
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor={`${id}-note`}>Note (optional, internal; the Matcher learns from it)</Label>
+        <Label htmlFor={`${id}-note`}>
+          {mode === "confirm"
+            ? "Note (optional, internal; the Matcher learns from it)"
+            : `${DIFFERENT_NEEDS_QUESTION} (required, internal; the Matcher learns from it)`}
+        </Label>
         <Textarea
           id={`${id}-note`}
           maxLength={2000}
           rows={2}
+          required={mode !== "confirm"}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           disabled={saving}
-          placeholder="Why is this the right grouping?"
+          placeholder={mode === "confirm" ? "Why is this the right grouping?" : undefined}
         />
       </div>
+
+      {mode !== "confirm" && (
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={regressionCase}
+            onChange={(e) => setRegressionCase(e.target.checked)}
+            disabled={saving}
+            className="size-4 accent-primary"
+          />
+          Add as Regression case
+        </label>
+      )}
 
       {mode !== "confirm" && (
         <p className="text-xs text-muted-foreground">

@@ -1,7 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { migrate } from "drizzle-orm/better-sqlite3/migrator";
-import { createDb, DATABASE_PATH, MIGRATIONS_FOLDER, type Db } from "./index";
+import { createDb, DATABASE_PATH, migrateDb, MIGRATIONS_FOLDER, type Db } from "./index";
 import { bootstrapPeople } from "./bootstrap";
 
 const JOURNAL = path.join(MIGRATIONS_FOLDER, "meta", "_journal.json");
@@ -22,7 +21,7 @@ function journalMtime(): number {
  *
  * The connection is cached on globalThis so it survives dev hot reloads; that
  * also means migrations added while the dev server runs would never apply. So
- * whenever the migration journal changes, re-run the migrator on the cached
+ * whenever the migration journal changes, re-run the migrations (SQL and data) on the cached
  * connection.
  */
 export function getDb(): Db {
@@ -35,7 +34,7 @@ export function getDb(): Db {
   } else {
     const mtime = journalMtime();
     if (mtime !== globalForDb.featurefulJournalMtime) {
-      migrate(globalForDb.featurefulDb, { migrationsFolder: MIGRATIONS_FOLDER });
+      migrateDb(globalForDb.featurefulDb);
       globalForDb.featurefulJournalMtime = mtime;
     }
   }

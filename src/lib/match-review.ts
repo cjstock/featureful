@@ -1,18 +1,23 @@
-import { and, asc, count, desc, eq, isNotNull, isNull, ne, sql, type SQL } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNotNull, isNull, ne, not, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/sqlite-core";
 import type { Db } from "@/db";
 import {
   aiCalls,
+  ESCALATION_REASONS,
   matchingDecisions,
   people,
   problems,
   requests,
   supports,
+  type EscalationReason,
+  type MatcherOutcome,
   type Role,
   type SubmitterChoice,
   type Verdict,
 } from "@/db/schema";
 import { summaryColumns, type AiCallLine } from "@/lib/ai-calls";
+import { AMBIGUITY_REASONS } from "@/lib/escalation";
+import { DIFFERENT_NEEDS_QUESTION } from "@/lib/escalation-labels";
 
 export const SUBMITTER_CHOICE_LABELS: Record<SubmitterChoice, string> = {
   accepted: "Accepted the match",
@@ -41,8 +46,16 @@ export type MatchingDecisionItem = {
       reason: string;
     } | null;
     newProblem: { title: string; need: string };
+    /** With no match: the closest existing Problem the Matcher named (`problemId`/`problemTitle` null once deleted). */
+    closestProblem: { problemId: number | null; problemTitle: string | null; confidence: number } | null;
   };
   submitterChoice: SubmitterChoice;
+  /** "ok" unless the Matcher was bypassed (failed, off, or out of budget). */
+  matcherOutcome: MatcherOutcome;
+  /** Why it was escalated, strongest first. Empty: Auto-accepted. */
+  escalationReasons: EscalationReason[];
+  /** Marked by the PM as a Regression case. */
+  regressionCase: boolean;
   /** The Problem the Request belongs to now. */
   currentProblem: { id: number; title: string };
   /** The Matcher's AI call behind the proposal (null for decisions made without one). */
@@ -60,12 +73,17 @@ export type MatchingDecisionItem = {
 
 export type MatchReviewDeps = { db: Db };
 
-/** What a PM gives with a verdict. Move needs `targetProblemId`; Split needs `newProblem`. */
+/**
+ * What a PM gives with a verdict. Move needs `targetProblemId`; Split needs `newProblem`; both
+ * need a note. `regressionCase` defaults to true for Move and Split, false for Confirm.
+ */
 export type ReviewOptions = {
   note?: string | null;
   targetProblemId?: number;
   newProblem?: { title: string; need: string };
+  regressionCase?: boolean;
 };
+
 
 /** Matcher prompts include at most this many Matching examples. */
 export const MAX_MATCHING_EXAMPLES = 20;
@@ -74,6 +92,7 @@ const submitter = alias(people, "submitter");
 const reviewer = alias(people, "reviewer");
 const current = alias(problems, "current_problem");
 const proposed = alias(problems, "proposed_problem");
+const closest = alias(problems, "closest_problem");
 const fromProblem = alias(problems, "from_problem");
 const toProblem = alias(problems, "to_problem");
 
@@ -88,6 +107,7 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
       submitter: { id: submitter.id, name: submitter.name, role: submitter.role },
       currentProblem: { id: current.id, title: current.title },
       proposedTitle: proposed.title,
+      closestTitle: closest.title,
       reviewerName: reviewer.name,
       fromTitle: fromProblem.title,
       toTitle: toProblem.title,
@@ -98,6 +118,7 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
     .innerJoin(submitter, eq(submitter.id, requests.authorId))
     .innerJoin(current, eq(current.id, requests.problemId))
     .leftJoin(proposed, eq(proposed.id, matchingDecisions.proposedProblemId))
+    .leftJoin(closest, eq(closest.id, matchingDecisions.closestProblemId))
     .leftJoin(reviewer, eq(reviewer.id, matchingDecisions.reviewerId))
     .leftJoin(fromProblem, eq(fromProblem.id, matchingDecisions.fromProblemId))
     .leftJoin(toProblem, eq(toProblem.id, matchingDecisions.toProblemId))
@@ -123,8 +144,15 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
             }
           : null,
       newProblem: { title: d.proposedTitle, need: d.proposedNeed },
+      closestProblem:
+        d.closestConfidence !== null
+          ? { problemId: d.closestProblemId, problemTitle: row.closestTitle, confidence: d.closestConfidence }
+          : null,
     },
     submitterChoice: d.submitterChoice,
+    matcherOutcome: d.matcherOutcome,
+    escalationReasons: d.escalationReasons ?? [],
+    regressionCase: d.regressionCase,
     currentProblem: row.currentProblem,
     aiCall: row.aiCall,
     review: d.verdict
@@ -143,12 +171,33 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
   }));
 }
 
+/** Whether the decision's Escalation reasons include any of `reasons`. */
+const hasReason = (reasons: readonly EscalationReason[]) =>
+  sql`exists (select 1 from json_each(${matchingDecisions.escalationReasons}) where value in (${sql.join(
+    reasons.map((r) => sql`${r}`),
+    sql`, `,
+  )}))`;
+
+/** Escalated: at least one Escalation reason. */
+const escalated = sql`json_array_length(coalesce(${matchingDecisions.escalationReasons}, '[]')) > 0`;
+
+/** Rank of the decision's strongest Escalation reason (0 = bypassed, the strongest). */
+const strongestReasonRank = sql`(select min(case value ${sql.join(
+  ESCALATION_REASONS.map((r, i) => sql`when ${r} then ${i}`),
+  sql` `,
+)} end) from json_each(${matchingDecisions.escalationReasons}))`;
+
 /**
  * Matching examples for the Matcher: reviewed decisions, corrections (Move, Split) first,
- * then most recently reviewed, capped at `limit`.
+ * then most recently reviewed, capped at `limit`. Every correction counts; a Confirm only when the
+ * decision was escalated for an ambiguity reason (mine is different, low confidence, near miss).
  */
 export function listMatchingExamples(db: Db, limit = MAX_MATCHING_EXAMPLES): MatchingDecisionItem[] {
-  return list(db, isNotNull(matchingDecisions.verdict), [
+  const informative = and(
+    isNotNull(matchingDecisions.verdict),
+    or(ne(matchingDecisions.verdict, "confirm"), hasReason(AMBIGUITY_REASONS)),
+  )!;
+  return list(db, informative, [
     asc(sql`case when ${matchingDecisions.verdict} = 'confirm' then 1 else 0 end`),
     desc(matchingDecisions.reviewedAt),
     desc(matchingDecisions.id),
@@ -156,7 +205,8 @@ export function listMatchingExamples(db: Db, limit = MAX_MATCHING_EXAMPLES): Mat
 }
 
 /**
- * Match review: the PM's queue of Matching decisions, and the Confirm, Move, and Split actions.
+ * Match review: the PM's Escalation queue, the Not escalated list, and the Confirm, Move, and Split
+ * actions.
  */
 export function createMatchReview({ db }: MatchReviewDeps) {
   /**
@@ -183,11 +233,14 @@ export function createMatchReview({ db }: MatchReviewDeps) {
       if (found.verdict) throw new Error("This Matching decision has already been reviewed");
       const { request } = found;
       const source = request.problemId;
+      const note = opts.note?.trim() || null;
+      if (verdict !== "confirm" && !note) throw new Error(`${DIFFERENT_NEEDS_QUESTION} A note is required.`);
       const recorded = {
         verdict,
         reviewerId,
         reviewedAt: new Date(),
-        note: opts.note?.trim() || null,
+        note,
+        regressionCase: opts.regressionCase ?? verdict !== "confirm",
       };
 
       if (verdict === "confirm") {
@@ -261,26 +314,34 @@ export function createMatchReview({ db }: MatchReviewDeps) {
   return {
     review,
 
-    /** Unreviewed Matching decisions, newest first. */
+    /** The Escalation queue: escalated, unreviewed decisions by strongest reason, then oldest first. */
     listQueue: () =>
-      list(db, isNull(matchingDecisions.verdict), [
+      list(db, and(isNull(matchingDecisions.verdict), escalated)!, [
+        asc(strongestReasonRank),
+        asc(matchingDecisions.createdAt),
+        asc(matchingDecisions.id),
+      ]),
+
+    /** Not escalated: Auto-accepted decisions no PM has reviewed (still reviewable), newest first. */
+    listNotEscalated: () =>
+      list(db, and(isNull(matchingDecisions.verdict), not(escalated))!, [
         desc(matchingDecisions.createdAt),
         desc(matchingDecisions.id),
       ]),
 
-    /** Reviewed Matching decisions (Matching examples), most recently reviewed first. */
+    /** Reviewed Matching decisions, most recently reviewed first. */
     listReviewed: () =>
       list(db, isNotNull(matchingDecisions.verdict), [
         desc(matchingDecisions.reviewedAt),
         desc(matchingDecisions.id),
       ]),
 
-    /** How many Matching decisions wait for review. */
+    /** How many Escalations wait for review. */
     countQueue: () =>
       db
         .select({ n: count() })
         .from(matchingDecisions)
-        .where(isNull(matchingDecisions.verdict))
+        .where(and(isNull(matchingDecisions.verdict), escalated))
         .get()?.n ?? 0,
   };
 }

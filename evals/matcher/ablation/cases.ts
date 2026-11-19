@@ -104,11 +104,13 @@ export type SimulatedReview = {
 const proposedMatch = (problemId: number, confidence: number, reason: string): MatchingExample["proposal"] => ({
   match: { problemId, problemTitle: byId.get(problemId)!.title, confidence, reason },
   newProblem: { title: "(not used)", need: "(not used)" },
+  closestProblem: null,
 });
 
 const proposedNew = (title: string, need: string): MatchingExample["proposal"] => ({
   match: null,
   newProblem: { title, need },
+  closestProblem: null,
 });
 
 /** The reviews, oldest first. Every one is a correction, so all of them are Matching examples. */
@@ -232,6 +234,9 @@ export function ablationMatchingExamples(): MatchingExample[] {
       submitter: { id: 1, name: "Simulated submitter", role: "customer" },
       proposal: r.proposal,
       submitterChoice: r.submitterChoice,
+      matcherOutcome: "ok",
+      escalationReasons: [],
+      regressionCase: true,
       currentProblem: ref(r.to),
       aiCall: null,
       review: {

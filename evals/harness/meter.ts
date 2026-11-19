@@ -67,6 +67,7 @@ export const ESTIMATE_ANSWER = JSON.stringify({
   confidence: 0,
   reason: "Offline estimate: no AI call was made.",
   newProblem: { title: "Estimate placeholder", need: "I need an estimate placeholder." },
+  closestProblem: null,
 });
 
 /**
