@@ -1,6 +1,6 @@
 import { createDb } from "@/db";
 import { people } from "@/db/schema";
-import { createIntake, type Matcher } from "@/lib/intake";
+import { createIntake, type Matcher, type MatchingExample } from "@/lib/intake";
 import { SEED_PEOPLE, SEED_REQUESTS } from "../../scripts/seed-data";
 import { caseScores, pairwiseScores } from "./score";
 import type { CaseOutcome, EvalResult, MatcherCase, ReplayOutcome } from "./types";
@@ -37,9 +37,12 @@ async function replay(matcher: Matcher): Promise<ReplayOutcome> {
   };
 }
 
-/** Ask the Matcher about one fixed-state case. A match to a Problem it wasn't shown counts as wrong. */
-async function runCase(matcher: Matcher, c: MatcherCase): Promise<CaseOutcome> {
-  const result = await matcher(c.request, c.problems, []);
+/**
+ * Ask the Matcher about one fixed-state case, with the given Matching examples
+ * (none in the normal eval). A match to a Problem it wasn't shown counts as wrong.
+ */
+export async function runCase(matcher: Matcher, c: MatcherCase, examples: MatchingExample[] = []): Promise<CaseOutcome> {
+  const result = await matcher(c.request, c.problems, examples);
   const answer = result.match ? result.match.problemId : "new";
   return {
     id: c.id,
