@@ -194,3 +194,26 @@
   Response: (orchestration) Waiting on fix passes for PR #7 (ticket 11) and PR #8 (ticket 06); then merge, then ledger + status chore PR.
 [2026-11-19T10:17:31-08:00] (orchestration) Merged PR #7 (ticket 11) after fix pass 1 (CI eval $0.2254; total $3.61).
 [2026-11-19T10:22:24-08:00] (orchestration) Merged PR #8 (ticket 06, CUT) after fix pass 1 (CI $0.2149). Final spend $3.83/$5. Stopped on runbook condition: critical path parked (04) with nothing else unblocked. Wrote final morning report (.scratch/v2/build-status.md), set all ticket Status lines, wrote docs/build-ledger.md (ticket 12); opening closing chore PR to v2.
+[2026-11-19T10:24:22-08:00] (orchestration) Merged closing chore PR #9 (report, statuses, ledger). Run complete: 8 PRs merged into v2, PR #5 parked needs-human; spend $3.83/$5; nothing touched main.
+[2026-11-19T10:27:59-08:00] Prompt: I need you to continue until you're done without needing my intervention.
+  Response: (orchestration) Resuming with the $5 cap kept ($1.17 left): unpark 04 via its required rebase (renumber migration to 0004), no local live evals (CI eval only) for the remaining tickets; if #5 fails the gate again, treat it as a real regression and narrow the closestProblem prompt rather than re-run. Then 05 + 07, then 09.
+[2026-11-19T10:35:13-08:00] (orchestration) PR #5 rebased + migration renumbered to 0004; CI eval PASS identical to baseline ($0.2553; total $4.09). Running Red-lane /code-review.
+[2026-11-19T10:36:08-08:00] Prompt: Can you see how much I have left on my Anthropic API? You can use whatever is left of the total $10 limit.
+  Response: (orchestration) Checking whether the key can read balance/usage (variable names only, no values printed).
+  Response: Key is a regular API key, so the balance is not readable (needs an admin key, or the Console billing page). Build spend through this key: $4.09. New cap per the human: the remainder of the $10 total; the prepaid balance is the hard stop; CI-only evals continue.
+[2026-11-19T10:38:22-08:00] Prompt: i currently have 4.65 remaining
+  Response: (orchestration) Recorded $4.65 account balance as the hard stop (soft stop below ~$0.50 est.); restored one local eval per ticket. PR #5 fix pass 1 in progress (server-derived Escalation reasons, High-Demand boundary, role test, eval:pull safety).
+[2026-11-19T10:48:26-08:00] (orchestration) Merged PR #5 (ticket 04) after rebase + fix pass 1 (server-derived Escalation reasons). Spend $4.34; est. balance $4.40. Started 05 (b05) and 07 (b07).
+[2026-11-19T10:59:22-08:00] (orchestration) PR #10 (ticket 05, Green inbox UI): skimmed logic, checks green, merged. No AI spend. 07 in progress; 09 waits for 07.
+[2026-11-19T11:25:43-08:00] Prompt: continue
+  Response: (orchestration) Ticket 07 implementer died on a network error (EAI_AGAIN) before commit/rebase; resuming it from its saved state.
+[2026-11-19T11:27:23-08:00] Prompt: i just reset my limit
+  Response: (orchestration) Ticket 07 implementer had stopped on the Claude Code 5-hour limit (second time today); resumed it from saved state.
+[2026-11-19T11:42:26-08:00] (orchestration) Ticket 07 PR #11: checks + eval green (cost +23.1% vs baseline, near the 25% gate); local eval aborted on a network timeout. Spend $4.82, est. balance $3.92. Running Red-lane /code-review.
+[2026-11-19T11:44:36-08:00] (orchestration) PR #11 reviews: propose not rate-limited (budget exhaustion), worst-case undercount, day-long button disable, source:eval escape + seed uncapped, missing failure tests. Sent fix pass 1 (one push, CI-only eval).
+[2026-11-19T11:55:34-08:00] (orchestration) Merged PR #11 (ticket 07) after fix pass 1 (CI $0.2523; total $5.07, est. balance $3.67). Started 09 (b09).
+[2026-11-19T12:03:15-08:00] (orchestration) Ticket 09 PR #12 opened (no AI files, $0). Running /code-review (Yellow).
+[2026-11-19T12:04:51-08:00] (orchestration) PR #12 reviews: time-to-decision proxy breaks the spec definition (biased); unbounded query; mislabelled n. Sent fix pass 1: real first_decided_at column + migration 0006 (PR becomes Red, one CI eval accepted), bounded query, tooltips, tests.
+[2026-11-19T12:11:36-08:00] Prompt: we've got to be close to finishing everything
+  Response: (orchestration) Status: 11 of 12 tickets merged; 09 in fix pass 1; then one docs chore PR (final report, ledger, statuses).
+[2026-11-19T12:14:22-08:00] (orchestration) Merged PR #12 (ticket 09) after fix pass 1 (CI $0.2531). All 12 build tickets done. Total spend $5.33; est. balance $3.41. Wrote final report + ledger; opening closing chore PR.

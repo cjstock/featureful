@@ -12,7 +12,7 @@ The existing `/review` page lists the ranked queue with reason chips; the inbox 
 
 **Blocked by:** 03
 
-**Status:** needs-human ([#5](https://github.com/cjstock/featureful/pull/5), parked)
+**Status:** done ([#5](https://github.com/cjstock/featureful/pull/5); was parked overnight on a noisy replay-F1 gate, unparked 2026-11-19 after rebase + fix pass 1)
 
 Parked overnight: the CI eval gate failed on PR #5 (replay F1 0.750 vs baseline 0.846, limit −0.05; one extra Problem, recall 0.733 → 0.600, precision 1.000, fixed-state cases identical), while the local live run of the same commit matched the baseline exactly. Two runs cannot separate run-to-run variance in the 26-Request replay from a real recall cost of the new `closestProblem` paragraph, and the runbook forbids re-running until green or weakening the gate. The human should measure variance (a few runs on v2 vs this branch) and decide whether the F1 gate needs a design change (mean of N, temperature 0, or a wider threshold). Blocks 05, 07, 09.
 
