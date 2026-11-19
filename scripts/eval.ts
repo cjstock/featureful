@@ -7,25 +7,29 @@
  *   npm run eval -- --estimate         # offline: estimate the live run's cost, no AI calls
  *   npm run eval -- --write-baseline   # live, then write evals/baseline.json (explicit only)
  *
- * Only the Matcher runs: no Evaluator, no writers. Every run first estimates its
- * worst-case cost offline (each call's prompt plus a full 1,000-token answer) and
- * refuses to start if that could pass the per-run cap (60 AI calls or $1). During
- * the run each call's output is capped at 1,000 tokens, and the meter refuses any
- * call whose worst case would pass the cap. Never part of `npm test`.
+ * Only the Matcher runs: no Evaluator, no writers. Every Matcher call goes through
+ * `aiGenerate` with source "eval", and its AI call record goes to the run's own
+ * in-memory database (never data/). Every run first estimates its worst-case cost
+ * offline (each call's prompt plus a full 1,000-token answer) and refuses to start
+ * if that could pass the per-run cap (60 AI calls or $1). During the run each
+ * call's output is capped at the Matcher's 1,000 tokens (config), and the meter
+ * refuses any call whose worst case would pass the cap. Never part of `npm test`.
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { CLAUDE_MODEL, MODEL_PRICES, type ModelPrices } from "@/lib/config";
-import { llmMatcher } from "@/lib/intake/llm-matcher";
+import { createDb } from "@/db";
+import { offlineModel } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS, CLAUDE_MODEL, MODEL_PRICES } from "@/lib/config";
+import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { gate } from "../evals/harness/gate";
-import { cannedNewProblem, interceptModel, meteredCalls, promptChars } from "../evals/harness/intercept";
 import {
   CapReachedError,
   createMeter,
+  ESTIMATE_ANSWER,
   EVAL_CAP,
-  MATCHER_MAX_OUTPUT_TOKENS,
-  worstCaseCallCost,
+  worstCaseMeter,
+  type Meter,
 } from "../evals/harness/meter";
 import { costLine, formatReport } from "../evals/harness/report";
 import { runEval } from "../evals/harness/run";
@@ -67,24 +71,27 @@ function publish(text: string) {
 }
 
 /**
- * Run the whole eval offline, with a stand-in answer for every call, adding up
- * each call's worst case under the same meter rule the live run uses. Throws
- * `CapReachedError` if the live run could pass the cap.
+ * Run the whole eval offline, with the offline model's stand-in answer for every
+ * call, adding up each call's worst case under the same meter rule the live run
+ * uses. Throws `CapReachedError` if the live run could pass the cap.
  */
-async function estimate(prices: ModelPrices) {
+async function estimate() {
   const meter = createMeter(EVAL_CAP);
-  const restore = interceptModel(async (options) => {
-    const worstCase = worstCaseCallCost(promptChars(options), prices);
-    meter.beforeCall(worstCase);
-    meter.afterCall(worstCase);
-    return cannedNewProblem();
+  const db = createDb(":memory:");
+  const matcher = createLlmMatcher(db, {
+    source: "eval",
+    person: null,
+    model: offlineModel(ESTIMATE_ANSWER),
+    meter: worstCaseMeter(meter),
   });
-  try {
-    await runEval(llmMatcher, CASES);
-  } finally {
-    restore();
-  }
+  await runEval(matcher, CASES, db);
   return meter.totals();
+}
+
+/** The live run: the real model, metered against the cap, with AI call records in its own in-memory db. */
+function liveRun(meter: Meter) {
+  const db = createDb(":memory:");
+  return runEval(createLlmMatcher(db, { source: "eval", person: null, meter }), CASES, db);
 }
 
 async function main() {
@@ -98,14 +105,14 @@ async function main() {
 
   let estimated;
   try {
-    estimated = await estimate(prices);
+    estimated = await estimate();
   } catch (error) {
     if (!(error instanceof CapReachedError)) throw error;
     fail(`the worst-case estimate is over the per-run cap. ${error.message}`);
   }
   console.log(
     `Estimate (worst case): $${estimated.costUsd.toFixed(4)} for ${estimated.calls} AI calls ` +
-      `(prompt chars ÷ 4 at $${prices.input}/MTok in, ${MATCHER_MAX_OUTPUT_TOKENS} output tokens per call at $${prices.output}/MTok).`,
+      `(prompt chars ÷ 4 at $${prices.input}/MTok in, ${AI_MAX_OUTPUT_TOKENS.matcher} output tokens per call at $${prices.output}/MTok).`,
   );
   if (estimateOnly) return;
 
@@ -114,12 +121,11 @@ async function main() {
   }
 
   const meter = createMeter(EVAL_CAP);
-  interceptModel(meteredCalls(meter, prices));
 
   console.log(`Running ${CASES.length} cases and the seed replay on ${CLAUDE_MODEL}...`);
   let run;
   try {
-    run = await runEval(llmMatcher, CASES);
+    run = await liveRun(meter);
   } catch (error) {
     console.error(error);
     const why = error instanceof CapReachedError ? error.message : "An AI call or the harness threw (see the job log).";

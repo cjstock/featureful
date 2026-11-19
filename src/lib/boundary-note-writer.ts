@@ -1,6 +1,7 @@
-import { generateText, Output } from "ai";
 import { z } from "zod";
-import { model } from "@/lib/ai";
+import type { Db } from "@/db";
+import { aiGenerate, type AiCaller } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 import type { BoundaryNoteInput, BoundaryNoteWriter } from "@/lib/match-review";
 
 const SYSTEM = `You maintain Boundary notes for Problems in a coffee-tracking app used by home roasters.
@@ -39,22 +40,31 @@ function verdictLine({ problem, review }: BoundaryNoteInput): string {
     : `Split from ${quote(review.fromProblem)} into its own new Problem ${quote(review.toProblem)}. ${role}`;
 }
 
-/** Production BoundaryNoteWriter: one structured-output LLM call. Throws on failure. */
-export const llmBoundaryNoteWriter: BoundaryNoteWriter = async (input) => {
-  const { problem, currentNote, review } = input;
-  const { output } = await generateText({
-    model,
-    system: SYSTEM,
-    prompt: [
-      `Problem: ${problem.title} — ${problem.need}`,
-      `Current Boundary note: ${currentNote ?? "(none yet)"}`,
-      "",
-      "Match review:",
-      `Request: ${review.request.title} — ${review.request.description}`,
-      `PM verdict: ${verdictLine(input)}`,
-      `PM note: ${review.note ?? "(none)"}`,
-    ].join("\n"),
-    output: Output.object({ schema }),
-  });
-  return output.boundaryNote;
-};
+/**
+ * Production BoundaryNoteWriter: one structured-output AI call about the Problem, recorded in `db`.
+ * Throws on failure.
+ */
+export function createLlmBoundaryNoteWriter(db: Db, caller: AiCaller): BoundaryNoteWriter {
+  return async (input) => {
+    const { problem, currentNote, review } = input;
+    const { output } = await aiGenerate({
+      ...caller,
+      db,
+      module: "boundary_note",
+      related: { type: "problem", id: problem.id },
+      system: SYSTEM,
+      prompt: [
+        `Problem: ${problem.title} — ${problem.need}`,
+        `Current Boundary note: ${currentNote ?? "(none yet)"}`,
+        "",
+        "Match review:",
+        `Request: ${review.request.title} — ${review.request.description}`,
+        `PM verdict: ${verdictLine(input)}`,
+        `PM note: ${review.note ?? "(none)"}`,
+      ].join("\n"),
+      schema,
+      maxOutputTokens: AI_MAX_OUTPUT_TOKENS.boundary_note,
+    });
+    return output.boundaryNote;
+  };
+}

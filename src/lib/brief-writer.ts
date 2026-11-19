@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
-import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { problems } from "@/db/schema";
-import { model } from "@/lib/ai";
+import { aiGenerate, type AiCaller } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 import { formatEvidence, type PromptEvidence } from "@/lib/evidence-prompt";
 import { getProblem, listEvidence } from "@/lib/problems";
 import { getProductStrategy } from "@/lib/product-strategy";
@@ -118,8 +118,13 @@ export function renderBrief(sections: BriefSections, input: BriefWriterInput): s
   ].join("\n\n");
 }
 
-/** One structured-output LLM call returning the brief markdown. Writes nothing. */
-export async function runBriefWriter(input: BriefWriterInput): Promise<string> {
+/** One structured-output AI call about Problem `problemId` (recorded in `db`) returning the brief markdown. Writes nothing else. */
+export async function runBriefWriter(
+  db: Db,
+  caller: AiCaller,
+  problemId: number,
+  input: BriefWriterInput,
+): Promise<string> {
   const { problem, evidence, priority, productStrategy } = input;
   const scoreLines = priority.breakdown
     .map(
@@ -128,11 +133,15 @@ export async function runBriefWriter(input: BriefWriterInput): Promise<string> {
     )
     .join("\n");
 
-  const { output } = await generateText({
-    model,
+  const { output } = await aiGenerate({
+    ...caller,
+    db,
+    module: "brief",
+    related: { type: "problem", id: problemId },
     system: SYSTEM,
     prompt: `Product Strategy:\n${productStrategy}\n\nProblem: ${problem.title}\nNeed: ${problem.need}\n\nScore breakdown${priority.evaluated ? "" : " (NOT fully evaluated yet)"}:\n${scoreLines}\n${totalLine(input)}\n\n${formatEvidence(evidence)}`,
-    output: Output.object({ schema: briefSchema }),
+    schema: briefSchema,
+    maxOutputTokens: AI_MAX_OUTPUT_TOKENS.brief,
   });
   return renderBrief(output, input);
 }
@@ -157,7 +166,7 @@ export function getBrief(db: Db, problemId: number): StoredBrief | null {
  * Generate (or regenerate) a Problem's Decision brief and store it with its generated-at time.
  * Throws if the Problem doesn't exist or the AI call fails; any previous brief is kept then.
  */
-export async function generateBrief(db: Db, problemId: number): Promise<StoredBrief> {
+export async function generateBrief(db: Db, problemId: number, caller: AiCaller): Promise<StoredBrief> {
   const detail = getProblem(db, problemId);
   if (!detail) throw new Error(`Problem ${problemId} not found`);
   const evidence = listEvidence(db, problemId).map(({ request, author }) => ({
@@ -166,7 +175,7 @@ export async function generateBrief(db: Db, problemId: number): Promise<StoredBr
     authorName: author.name,
   }));
 
-  const markdown = await runBriefWriter({
+  const markdown = await runBriefWriter(db, caller, problemId, {
     problem: detail.problem,
     evidence,
     priority: detail.priority,

@@ -14,6 +14,7 @@ import {
 import { confidenceTone, verdictTone } from "@/lib/tones";
 import { cn } from "@/lib/utils";
 import { TONE_STYLES } from "@/components/tone-styles";
+import { AiCallLine } from "@/components/ai-call-line";
 import { MatchReviewControls } from "@/components/match-review-controls";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,7 +32,7 @@ export default async function ReviewPage({
   const person = await getCurrentPerson();
   if (!isPm(person)) notFound();
   const reviewedTab = (await searchParams).tab === "reviewed";
-  const review = getMatchReview();
+  const review = getMatchReview(person.id);
   const queueCount = review.countQueue();
   const items = reviewedTab ? review.listReviewed() : review.listQueue();
   const problemOptions = reviewedTab
@@ -152,6 +153,7 @@ function DecisionCard({
                 <p className="text-muted-foreground">{proposal.newProblem.need}</p>
               </>
             )}
+            {item.aiCall && <AiCallLine aiCall={item.aiCall} />}
           </dd>
 
           <dt className="text-muted-foreground">Submitter chose</dt>

@@ -1,9 +1,9 @@
 import { asc, eq } from "drizzle-orm";
-import { generateText, Output } from "ai";
 import { z } from "zod";
 import type { Db } from "@/db";
 import { problems, requests } from "@/db/schema";
-import { model } from "@/lib/ai";
+import { aiGenerate, type AiCaller } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 import { formatEvidence, type PromptEvidence } from "@/lib/evidence-prompt";
 import { getProductStrategy } from "@/lib/product-strategy";
 
@@ -45,13 +45,22 @@ export interface EvaluatorInput {
   productStrategy: string;
 }
 
-/** One structured-output LLM call. Writes nothing. */
-export async function runEvaluator({ problem, evidence, productStrategy }: EvaluatorInput) {
-  const { output } = await generateText({
-    model,
+/** One structured-output AI call about Problem `problemId`, recorded in `db`. Writes nothing else. */
+export async function runEvaluator(
+  db: Db,
+  caller: AiCaller,
+  problemId: number,
+  { problem, evidence, productStrategy }: EvaluatorInput,
+) {
+  const { output } = await aiGenerate({
+    ...caller,
+    db,
+    module: "evaluator",
+    related: { type: "problem", id: problemId },
     system: SYSTEM,
     prompt: `Product Strategy:\n${productStrategy}\n\nProblem: ${problem.title}\nNeed: ${problem.need}\n\n${formatEvidence(evidence)}`,
-    output: Output.object({ schema: evaluationSchema }),
+    schema: evaluationSchema,
+    maxOutputTokens: AI_MAX_OUTPUT_TOKENS.evaluator,
   });
   return output;
 }
@@ -61,7 +70,7 @@ export async function runEvaluator({ problem, evidence, productStrategy }: Evalu
  * Throws if the Problem doesn't exist or the AI call fails; previous scores are left untouched then.
  * Reusable outside Next (seed script): pass any Db.
  */
-export async function evaluateProblem(db: Db, problemId: number): Promise<Evaluation> {
+export async function evaluateProblem(db: Db, problemId: number, caller: AiCaller): Promise<Evaluation> {
   const problem = db.select().from(problems).where(eq(problems.id, problemId)).get();
   if (!problem) throw new Error(`Problem ${problemId} not found`);
   const evidence = db
@@ -71,7 +80,7 @@ export async function evaluateProblem(db: Db, problemId: number): Promise<Evalua
     .orderBy(asc(requests.createdAt), asc(requests.id))
     .all();
 
-  const evaluation = await runEvaluator({
+  const evaluation = await runEvaluator(db, caller, problemId, {
     problem,
     evidence,
     productStrategy: getProductStrategy(db).body,
@@ -95,9 +104,9 @@ export async function evaluateProblem(db: Db, problemId: number): Promise<Evalua
 }
 
 /** Evaluate without throwing (for background runs); logs and returns false on failure. */
-export async function tryEvaluateProblem(db: Db, problemId: number): Promise<boolean> {
+export async function tryEvaluateProblem(db: Db, problemId: number, caller: AiCaller): Promise<boolean> {
   try {
-    await evaluateProblem(db, problemId);
+    await evaluateProblem(db, problemId, caller);
     return true;
   } catch (error) {
     console.error(`Evaluation of Problem ${problemId} failed`, error);
@@ -106,14 +115,14 @@ export async function tryEvaluateProblem(db: Db, problemId: number): Promise<boo
 }
 
 /** Re-evaluate every Problem, a few at a time. Failures are logged and counted, not thrown. */
-export async function evaluateAllProblems(db: Db, concurrency = 4) {
+export async function evaluateAllProblems(db: Db, caller: AiCaller, concurrency = 4) {
   const ids = db.select({ id: problems.id }).from(problems).orderBy(asc(problems.id)).all().map((p) => p.id);
   let next = 0;
   let failed = 0;
   const worker = async () => {
     while (next < ids.length) {
       const id = ids[next++];
-      if (!(await tryEvaluateProblem(db, id))) failed++;
+      if (!(await tryEvaluateProblem(db, id, caller))) failed++;
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, ids.length) }, worker));
