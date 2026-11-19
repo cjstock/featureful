@@ -28,6 +28,22 @@ export type SubmitterChoice = (typeof SUBMITTER_CHOICES)[number];
 export const VERDICTS = ["confirm", "move", "split"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
+/** The AI modules: each AI call is made by exactly one. */
+export const AI_MODULES = ["matcher", "evaluator", "boundary_note", "decision_note", "brief"] as const;
+export type AiModule = (typeof AI_MODULES)[number];
+
+/** What started an AI call: the app, the seed script, or an eval run. */
+export const AI_CALL_SOURCES = ["app", "seed", "eval"] as const;
+export type AiCallSource = (typeof AI_CALL_SOURCES)[number];
+
+/** How an AI call ended. `refused_*` calls were never sent. */
+export const AI_CALL_OUTCOMES = ["ok", "error", "parse_failed", "refused_budget", "refused_off"] as const;
+export type AiCallOutcome = (typeof AI_CALL_OUTCOMES)[number];
+
+/** What an AI call was about. */
+export const AI_RELATED_TYPES = ["request", "problem", "decision"] as const;
+export type AiRelatedType = (typeof AI_RELATED_TYPES)[number];
+
 const createdAt = () =>
   integer("created_at", { mode: "timestamp_ms" })
     .notNull()
@@ -111,6 +127,42 @@ export const supports = sqliteTable(
 );
 
 /**
+ * AI call: one attempt by an AI module, with what it was shown, what it returned, what it cost
+ * and its outcome. Written only by `aiGenerate` (src/lib/ai.ts). Content is PM-only.
+ */
+export const aiCalls = sqliteTable("ai_calls", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  time: integer("time", { mode: "timestamp_ms" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  module: text("module", { enum: AI_MODULES }).notNull(),
+  model: text("model").notNull(),
+  /** Short hash of the module's system prompt. */
+  promptVersion: text("prompt_version").notNull(),
+  inputNoCache: integer("input_no_cache").notNull().default(0),
+  cacheRead: integer("cache_read").notNull().default(0),
+  cacheWrite: integer("cache_write").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  costUsd: real("cost_usd").notNull().default(0),
+  latencyMs: integer("latency_ms").notNull().default(0),
+  outcome: text("outcome", { enum: AI_CALL_OUTCOMES }).notNull(),
+  error: text("error"),
+  relatedType: text("related_type", { enum: AI_RELATED_TYPES }),
+  relatedId: integer("related_id"),
+  /** Who triggered it (null for the seed and evals). */
+  personId: integer("person_id").references(() => people.id, { onDelete: "set null" }),
+  source: text("source", { enum: AI_CALL_SOURCES }).notNull(),
+  /** The system prompt as sent, so an old prompt version can be reproduced. */
+  system: text("system").notNull(),
+  /** The rendered prompt as sent. */
+  prompt: text("prompt").notNull(),
+  /** The model's raw output (null when there was none). */
+  output: text("output"),
+  /** Matcher only: the structured Problems it was shown. */
+  shownProblems: text("shown_problems", { mode: "json" }),
+});
+
+/**
  * Matching decision: what the Matcher proposed for a Request and what the
  * submitter chose. One per Request. Review fields are null until a PM gives a
  * Match review; a reviewed row is a Matching example.
@@ -134,6 +186,10 @@ export const matchingDecisions = sqliteTable("matching_decisions", {
   submitterChoice: text("submitter_choice", { enum: SUBMITTER_CHOICES }).notNull(),
   createdAt: createdAt(),
 
+  // The Matcher's AI call (null for decisions made before AI call records, or without one).
+  promptVersion: text("prompt_version"),
+  aiCallId: integer("ai_call_id").references(() => aiCalls.id, { onDelete: "set null" }),
+
   // Match review.
   verdict: text("verdict", { enum: VERDICTS }),
   reviewerId: integer("reviewer_id").references(() => people.id),
@@ -154,3 +210,4 @@ export type Request = typeof requests.$inferSelect;
 export type NewRequest = typeof requests.$inferInsert;
 export type Support = typeof supports.$inferSelect;
 export type MatchingDecision = typeof matchingDecisions.$inferSelect;
+export type AiCall = typeof aiCalls.$inferSelect;

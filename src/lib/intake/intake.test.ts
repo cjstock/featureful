@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { createDb, type Db } from "@/db";
-import { matchingDecisions, people, problems, requests, supports } from "@/db/schema";
+import { aiCalls, matchingDecisions, people, problems, requests, supports } from "@/db/schema";
+import { offlineModel, promptVersion } from "@/lib/ai";
 import { createIntake, type Matcher, type MatchingExample } from "@/lib/intake";
+import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { createMatchReview } from "@/lib/match-review";
 
 function setup(matcher: Matcher) {
@@ -283,5 +285,105 @@ describe("Intake passes Boundary notes to the Matcher", () => {
       { id: grinder.id, title: grinder.title, need: grinder.need, boundaryNote: note },
       { id: taste.id, title: "Taste", need: "I need to taste.", boundaryNote: null },
     ]);
+  });
+});
+
+describe("the Matcher's AI call on the Matching decision", () => {
+  const answer = (problemId: number | null) =>
+    offlineModel(
+      JSON.stringify({
+        matchedProblemId: problemId,
+        confidence: problemId ? 0.8 : 0,
+        reason: "Same need: remembering grind.",
+        newProblem: NEW_PROBLEM,
+      }),
+    );
+
+  function setupLlm(problemId: (grinderId: number) => number | null) {
+    const db = createDb(":memory:");
+    const [alex, priya] = db
+      .insert(people)
+      .values([
+        { name: "Alex", role: "customer" },
+        { name: "Priya", role: "customer" },
+      ])
+      .returning()
+      .all();
+    const grinder = db
+      .insert(problems)
+      .values({ title: "Dial in grind size", need: "I need to know which grind setting produced a brew I liked." })
+      .returning()
+      .get();
+    const intakeFor = (personId: number | null, source: "app" | "seed" = "app") =>
+      createIntake({
+        db,
+        matcher: createLlmMatcher(db, { source, person: personId, model: answer(problemId(grinder.id)) }),
+      });
+    return { db, alex, priya, grinder, intakeFor };
+  }
+
+  it("records the prompt version and AI call id, and points the AI call at the saved Request", async () => {
+    const { db, alex, grinder, intakeFor } = setupLlm((id) => id);
+    const intake = intakeFor(alex.id);
+
+    const proposal = await intake.propose(request);
+    expect(proposal.aiCallId).toEqual(expect.any(Number));
+    const { requestId } = intake.confirm(request, proposal, { attachTo: grinder.id }, alex.id);
+
+    const call = db.select().from(aiCalls).get()!;
+    expect(call).toMatchObject({
+      module: "matcher",
+      personId: alex.id,
+      relatedType: "request",
+      relatedId: requestId,
+      shownProblems: [{ id: grinder.id, title: grinder.title, need: grinder.need, boundaryNote: null }],
+    });
+    expect(db.select().from(matchingDecisions).get()).toMatchObject({
+      aiCallId: call.id,
+      promptVersion: call.promptVersion,
+    });
+    expect(call.promptVersion).toBe(promptVersion(call.system));
+
+    // The PM's decision card reads the AI call line from the Match review queue.
+    const [item] = createMatchReview({ db, boundaryNoteWriter: async () => "" }).listQueue();
+    expect(item.aiCall).toEqual({
+      id: call.id,
+      module: "matcher",
+      promptVersion: call.promptVersion,
+      costUsd: 0,
+      latencyMs: expect.any(Number),
+      outcome: "ok",
+    });
+  });
+
+  it("links only this person's own unused app Matcher call for this same Request; otherwise saves the decision unlinked", async () => {
+    const { db, alex, priya, intakeFor } = setupLlm(() => null);
+    const decide = (personId: number, aiCallId: number | null | undefined, draft = request) => {
+      const intake = intakeFor(personId);
+      return intake.confirm(draft, { match: null, newProblem: NEW_PROBLEM, aiCallId }, { createProblem: NEW_PROBLEM }, personId);
+    };
+    const alexCall = (await intakeFor(alex.id).propose(request)).aiCallId!;
+    const seedCall = (await intakeFor(null, "seed").propose(request)).aiCallId!;
+    const otherRequestCall = (await intakeFor(alex.id).propose({ title: "Dark mode", description: "Please." })).aiCallId!;
+
+    decide(priya.id, alexCall); // another person's call
+    decide(alex.id, seedCall); // a seed call (no person, not the app)
+    decide(alex.id, otherRequestCall); // made for a different Request
+    decide(alex.id, 999); // doesn't exist
+    decide(alex.id, alexCall); // the real one: linked
+    decide(alex.id, alexCall); // already linked to a Request
+
+    const decisions = db.select().from(matchingDecisions).orderBy(matchingDecisions.id).all();
+    expect(decisions.map((d) => d.aiCallId)).toEqual([null, null, null, null, alexCall, null]);
+    expect(decisions.map((d) => d.promptVersion !== null)).toEqual([false, false, false, false, true, false]);
+    expect(db.select().from(requests).all()).toHaveLength(6);
+  });
+
+  it("records no AI call for a Matcher that isn't the AI (a fake), and still saves the decision", async () => {
+    const { db, alex, intake } = setup(noMatch);
+    const proposal = await intake.propose(request);
+    intake.confirm(request, proposal, { createProblem: NEW_PROBLEM }, alex.id);
+    expect(db.select().from(matchingDecisions).get()).toMatchObject({ aiCallId: null, promptVersion: null });
+    expect(createMatchReview({ db, boundaryNoteWriter: async () => "" }).listQueue()[0].aiCall).toBeNull();
   });
 });

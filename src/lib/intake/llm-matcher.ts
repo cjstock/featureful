@@ -1,8 +1,9 @@
-import { generateText, Output } from "ai";
 import { z } from "zod";
-import { model } from "@/lib/ai";
+import type { Db } from "@/db";
+import { aiGenerate, type AiCaller } from "@/lib/ai";
+import { AI_MAX_OUTPUT_TOKENS } from "@/lib/config";
 import { SUBMITTER_CHOICE_LABELS } from "@/lib/match-review";
-import type { Matcher, MatchingExample } from "./index";
+import type { Matcher, MatchingExample, RequestDraft } from "./index";
 
 const SYSTEM = `You triage feature Requests for a coffee-tracking app used by home roasters (beans, roasts, brews, recipes).
 
@@ -66,41 +67,61 @@ function formatExample(example: MatchingExample, index: number): string {
   ].join("\n");
 }
 
-/** Production Matcher: one structured-output LLM call over the full Problem list (ADR 0001). */
-export const llmMatcher: Matcher = async (request, problems, examples) => {
-  const list =
-    problems.length === 0
-      ? "(none yet)"
-      : problems
-          .map(
-            (p) =>
-              `- id ${p.id}: ${p.title} — ${p.need}` +
-              (p.boundaryNote ? `\n  Boundary note: ${p.boundaryNote}` : ""),
-          )
-          .join("\n");
+/** The prompt's last section: the Request being matched. */
+const requestSection = (request: RequestDraft) =>
+  `New Request:\nTitle: ${request.title}\nDescription: ${request.description}`;
 
-  const examplesSection =
-    examples.length === 0
-      ? ""
-      : `Matching examples (corrections first, then most recent):\n\n${examples.map(formatExample).join("\n\n")}\n\n`;
+/** Whether a Matcher prompt (as stored on its AI call) was about this Request. */
+export function isMatcherPromptFor(prompt: string, request: RequestDraft): boolean {
+  return prompt.endsWith(`\n\n${requestSection(request)}`);
+}
 
-  const { output } = await generateText({
-    model,
-    system: SYSTEM,
-    prompt: `${examplesSection}Existing Problems:\n${list}\n\nNew Request:\nTitle: ${request.title}\nDescription: ${request.description}`,
-    output: Output.object({ schema }),
-  });
+/**
+ * Production Matcher: one structured-output AI call over the full Problem list (ADR 0001),
+ * recorded in `db` as an AI call for `caller`.
+ */
+export function createLlmMatcher(db: Db, caller: AiCaller): Matcher {
+  return async (request, problems, examples) => {
+    const list =
+      problems.length === 0
+        ? "(none yet)"
+        : problems
+            .map(
+              (p) =>
+                `- id ${p.id}: ${p.title} — ${p.need}` +
+                (p.boundaryNote ? `\n  Boundary note: ${p.boundaryNote}` : ""),
+            )
+            .join("\n");
 
-  return {
-    match:
-      output.matchedProblemId === null
-        ? null
-        : {
-            problemId: output.matchedProblemId,
-            confidence: output.confidence,
-            reason: output.reason,
-          },
-    newProblem: output.newProblem,
-    reason: output.reason,
+    const examplesSection =
+      examples.length === 0
+        ? ""
+        : `Matching examples (corrections first, then most recent):\n\n${examples.map(formatExample).join("\n\n")}\n\n`;
+
+    const { output, aiCall } = await aiGenerate({
+      ...caller,
+      db,
+      module: "matcher",
+      related: null,
+      system: SYSTEM,
+      prompt: `${examplesSection}Existing Problems:\n${list}\n\n${requestSection(request)}`,
+      schema,
+      maxOutputTokens: AI_MAX_OUTPUT_TOKENS.matcher,
+      shownProblems: problems,
+    });
+
+    return {
+      match:
+        output.matchedProblemId === null
+          ? null
+          : {
+              problemId: output.matchedProblemId,
+              confidence: output.confidence,
+              reason: output.reason,
+            },
+      newProblem: output.newProblem,
+      reason: output.reason,
+      aiCallId: aiCall.id,
+    };
   };
-};
+}

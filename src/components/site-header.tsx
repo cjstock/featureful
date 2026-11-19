@@ -17,7 +17,7 @@ export async function SiteHeader() {
   const db = getDb();
   const everyone = db.select().from(people).orderBy(asc(people.id)).all();
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
-  const queueCount = isPm(current) ? getMatchReview().countQueue() : 0;
+  const queueCount = isPm(current) ? getMatchReview(current.id).countQueue() : 0;
 
   return (
     <header className="border-b">

@@ -1,6 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull } from "drizzle-orm";
 import type { Db } from "@/db";
 import {
+  aiCalls,
   matchingDecisions,
   problems,
   requests,
@@ -8,6 +9,7 @@ import {
   type SubmitterChoice,
 } from "@/db/schema";
 import { listMatchingExamples, type MatchingDecisionItem } from "@/lib/match-review";
+import { isMatcherPromptFor } from "./llm-matcher";
 
 /** A Request as typed by the submitter, before it is saved. */
 export type RequestDraft = { title: string; description: string };
@@ -27,6 +29,8 @@ export type MatcherResult = {
   newProblem: NewProblemStatement;
   /** The Matcher's one-line reason, including why nothing matches. Read by the eval report; intake ignores it. */
   reason?: string;
+  /** The AI call that produced this answer (absent for fakes). */
+  aiCallId?: number;
 };
 
 /** A reviewed Matching decision (with its Match review) that the Matcher learns from. */
@@ -54,6 +58,8 @@ export type Proposal = {
     reason: string;
   } | null;
   newProblem: NewProblemStatement;
+  /** The Matcher's AI call, recorded on the Matching decision at confirm. */
+  aiCallId?: number | null;
 };
 
 /** The submitter's choice: attach to an existing Problem, or create a new one. */
@@ -84,7 +90,7 @@ export type IntakeDeps = {
 };
 
 export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
-  /** Ask the Matcher what to do with a Request. Writes nothing. */
+  /** Ask the Matcher what to do with a Request. Writes nothing but the AI call record of an AI Matcher. */
   async function propose(request: RequestDraft): Promise<Proposal> {
     const list = db
       .select({
@@ -110,6 +116,7 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
             }
           : null,
       newProblem: result.newProblem,
+      aiCallId: result.aiCallId ?? null,
     };
   }
 
@@ -152,6 +159,31 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
       const proposedProblemId =
         match &&
         tx.select({ id: problems.id }).from(problems).where(eq(problems.id, match.problemId)).get()?.id;
+      // The proposal comes back from the client, so only link an AI call that is this person's own
+      // unused app Matcher call about this same Request; anything else saves the decision unlinked.
+      const candidate = proposal.aiCallId
+        ? tx
+            .select({ id: aiCalls.id, promptVersion: aiCalls.promptVersion, prompt: aiCalls.prompt })
+            .from(aiCalls)
+            .where(
+              and(
+                eq(aiCalls.id, proposal.aiCallId),
+                eq(aiCalls.source, "app"),
+                eq(aiCalls.module, "matcher"),
+                eq(aiCalls.outcome, "ok"),
+                isNull(aiCalls.relatedId),
+                eq(aiCalls.personId, personId),
+              ),
+            )
+            .get()
+        : undefined;
+      const aiCall = candidate && isMatcherPromptFor(candidate.prompt, request) ? candidate : undefined;
+      if (aiCall) {
+        tx.update(aiCalls)
+          .set({ relatedType: "request", relatedId: requestId })
+          .where(eq(aiCalls.id, aiCall.id))
+          .run();
+      }
       tx.insert(matchingDecisions)
         .values({
           requestId,
@@ -161,6 +193,8 @@ export function createIntake({ db, matcher, onEvidenceAdded }: IntakeDeps) {
           proposedTitle: proposal.newProblem.title,
           proposedNeed: proposal.newProblem.need,
           submitterChoice: submitterChoiceOf(proposal, decision),
+          promptVersion: aiCall?.promptVersion ?? null,
+          aiCallId: aiCall?.id ?? null,
         })
         .run();
       return { problemId, requestId, createdProblem: !("attachTo" in decision) };

@@ -6,6 +6,8 @@ import { isInternalStakeholder, isPm, ROLE_LABELS } from "@/lib/roles";
 import { getProblem, listEvidence } from "@/lib/problems";
 import { STATUS_LABELS } from "@/lib/statuses";
 import { getBrief } from "@/lib/brief-writer";
+import { latestEvaluationCall } from "@/lib/ai-calls";
+import { AiCallLine } from "@/components/ai-call-line";
 import { Badge } from "@/components/ui/badge";
 import { roleTone } from "@/lib/tones";
 import {
@@ -40,6 +42,8 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
   // Customers only ever see their own Requests; never other Customers' words, scores or briefs.
   const evidence = listEvidence(db, id, internal ? undefined : person.id);
   const supportedByMe = supporters.some((s) => s.id === person.id);
+  // PMs see which AI call produced the current evaluation.
+  const evaluationCall = isPm(person) ? latestEvaluationCall(db, id) : null;
 
   return (
     <div className="space-y-6">
@@ -116,6 +120,11 @@ export default async function ProblemPage({ params }: { params: Promise<{ id: st
               supporterCount={supporters.length}
               canOverride={isPm(person)}
             />
+            {evaluationCall && (
+              <div className="mt-4">
+                <AiCallLine aiCall={evaluationCall} />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

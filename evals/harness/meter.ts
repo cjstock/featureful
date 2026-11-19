@@ -1,10 +1,10 @@
-import type { ModelPrices } from "@/lib/config";
+import type { AiMeter } from "@/lib/ai";
 
 /**
- * The eval's local AI-call meter: counts calls and cost, and refuses a call that
- * would go over the per-run cap (60 calls or $1). There's no `aiGenerate` seam
- * yet; whichever of the AI-call-seam and delimiting slices lands second wires
- * the harness through it instead.
+ * The eval's local AI-call meter: counts calls and cost, and refuses a call that would go over
+ * the per-run cap (60 calls or $1). It plugs into `aiGenerate` (an `AiMeter`), which hands it each
+ * call's worst case (prompt chars ÷ 4 at the input price, plus the Matcher's 1,000-token output
+ * cap at the output price) before sending, and what the call actually cost after.
  */
 
 /** A per-run cap on AI calls and spend. */
@@ -12,42 +12,13 @@ export type EvalCap = { maxCalls: number; maxCostUsd: number };
 
 export const EVAL_CAP: EvalCap = { maxCalls: 60, maxCostUsd: 1 };
 
-/**
- * The Matcher's output cap (spec: Matcher 1,000). The eval sets it on every live
- * call, so a call can never cost more than `worstCaseCallCost`.
- */
-export const MATCHER_MAX_OUTPUT_TOKENS = 1_000;
-
-export type TokenUsage = {
-  input: { noCache: number; cacheRead: number; cacheWrite: number };
-  output: number;
-};
-
-const PER_TOKEN = 1 / 1_000_000;
-
-/** What a call cost, from its token usage and per-million-token prices. */
-export function costOf(usage: TokenUsage, prices: ModelPrices): number {
-  return (
-    (usage.input.noCache * prices.input +
-      usage.input.cacheRead * prices.cacheRead +
-      usage.input.cacheWrite * prices.cacheWrite +
-      usage.output * prices.output) *
-    PER_TOKEN
-  );
-}
-
-/** The most a call can cost: prompt characters ÷ 4 as input tokens, plus a full answer at the output cap. */
-export function worstCaseCallCost(promptChars: number, prices: ModelPrices): number {
-  return ((promptChars / 4) * prices.input + MATCHER_MAX_OUTPUT_TOKENS * prices.output) * PER_TOKEN;
-}
-
 export class CapReachedError extends Error {
   name = "CapReachedError";
 }
 
-export type Meter = ReturnType<typeof createMeter>;
+export type Meter = AiMeter & { totals: () => { calls: number; costUsd: number } };
 
-export function createMeter(cap: EvalCap) {
+export function createMeter(cap: EvalCap): Meter {
   let calls = 0;
   let costUsd = 0;
   return {
@@ -70,3 +41,29 @@ export function createMeter(cap: EvalCap) {
     totals: () => ({ calls, costUsd }),
   };
 }
+
+/**
+ * For an offline estimate: counts every call at its worst case, under the same cap rule as a live
+ * run, and ignores the (zero) actual cost the offline model reports.
+ */
+export function worstCaseMeter(meter: Meter): AiMeter {
+  return {
+    beforeCall(worstCaseUsd) {
+      meter.beforeCall(worstCaseUsd);
+      meter.afterCall(worstCaseUsd);
+    },
+    afterCall() {},
+  };
+}
+
+/**
+ * The offline model's answer for estimates: the Matcher saying "no match, new Problem". Every
+ * Request becoming a new Problem makes the Problem list (and so the prompts) as long as it can
+ * get, so estimates err high.
+ */
+export const ESTIMATE_ANSWER = JSON.stringify({
+  matchedProblemId: null,
+  confidence: 0,
+  reason: "Offline estimate: no AI call was made.",
+  newProblem: { title: "Estimate placeholder", need: "I need an estimate placeholder." },
+});

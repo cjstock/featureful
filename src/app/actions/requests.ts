@@ -5,9 +5,10 @@ import { after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { idSchema, message, type Result } from "@/lib/action-result";
+import { appCaller } from "@/lib/ai";
 import { getCurrentPerson } from "@/lib/identity";
-import { createIntake, type Confirmation, type Proposal } from "@/lib/intake";
-import { llmMatcher } from "@/lib/intake/llm-matcher";
+import { createIntake, type Proposal } from "@/lib/intake";
+import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { tryEvaluateProblem } from "@/lib/evaluator";
 
 const draftSchema = z.object({
@@ -39,19 +40,23 @@ const proposalSchema = z.object({
     title: z.string().trim().min(1).max(200),
     need: z.string().trim().min(1).max(2000),
   }),
+  aiCallId: idSchema.nullable().optional(),
 });
 
 export type RequestDraftInput = z.input<typeof draftSchema>;
 export type DecisionInput = z.input<typeof decisionSchema>;
 
-/** Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent. */
-function onEvidenceAdded({ problemId }: Confirmation) {
-  // Pages are dynamic and read the db per request, so the next visit shows the new scores.
-  after(() => tryEvaluateProblem(getDb(), problemId));
-}
-
-function intake() {
-  return createIntake({ db: getDb(), matcher: llmMatcher, onEvidenceAdded });
+/** Intake for the current person, whose AI calls (Matcher, then Evaluator) are recorded as theirs. */
+function intake(personId: number) {
+  const db = getDb();
+  const caller = appCaller(personId);
+  return createIntake({
+    db,
+    matcher: createLlmMatcher(db, caller),
+    // Re-evaluate a Problem once it is created or gets new Evidence, after the response is sent.
+    // Pages are dynamic and read the db per request, so the next visit shows the new scores.
+    onEvidenceAdded: ({ problemId }) => after(() => tryEvaluateProblem(db, problemId, caller)),
+  });
 }
 
 /** Step 1: ask the AI to match the Request. Saves nothing. */
@@ -60,9 +65,9 @@ export async function proposeRequest(
 ): Promise<Result<{ proposal: Proposal }>> {
   try {
     // Every role (Customer, Support agent, PM) may submit Requests.
-    await getCurrentPerson();
+    const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    return { ok: true, proposal: await intake().propose(draft) };
+    return { ok: true, proposal: await intake(person.id).propose(draft) };
   } catch (error) {
     console.error("proposeRequest failed", error);
     return { ok: false, error: message(error) };
@@ -78,7 +83,7 @@ export async function confirmRequest(
   try {
     const person = await getCurrentPerson();
     const draft = draftSchema.parse(input);
-    const { problemId } = intake().confirm(
+    const { problemId } = intake(person.id).confirm(
       draft,
       proposalSchema.parse(proposal),
       decisionSchema.parse(decision),

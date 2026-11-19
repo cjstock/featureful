@@ -1,4 +1,4 @@
-import { createDb } from "@/db";
+import { createDb, type Db } from "@/db";
 import { people } from "@/db/schema";
 import { createIntake, type Matcher } from "@/lib/intake";
 import { SEED_PEOPLE, SEED_REQUESTS } from "../../scripts/seed-data";
@@ -8,13 +8,12 @@ import type { CaseOutcome, EvalResult, MatcherCase, ReplayOutcome } from "./type
 export type EvalRun = Pick<EvalResult, "replay" | "caseScores" | "cases">;
 
 /**
- * Replay the seed Requests through intake into an empty in-memory database, in
+ * Replay the seed Requests through intake into `db` (empty, in memory), in
  * the seed's order, with the submitter always accepting the Matcher's proposal.
  * Nothing else runs: no Evaluator, no writers, so the only AI calls are the
  * Matcher's (one per seed Request).
  */
-async function replay(matcher: Matcher): Promise<ReplayOutcome> {
-  const db = createDb(":memory:");
+async function replay(matcher: Matcher, db: Db): Promise<ReplayOutcome> {
   db.insert(people).values(SEED_PEOPLE).run();
   const personId = new Map(db.select().from(people).all().map((p) => [p.name, p.id]));
   const intake = createIntake({ db, matcher });
@@ -54,9 +53,13 @@ async function runCase(matcher: Matcher, c: MatcherCase): Promise<CaseOutcome> {
   };
 }
 
-/** Run the replay and every fixed-state case, sequentially, and score them. */
-export async function runEval(matcher: Matcher, cases: MatcherCase[]): Promise<EvalRun> {
-  const replayOutcome = await replay(matcher);
+/**
+ * Run the replay and every fixed-state case, sequentially, and score them. `db` is the run's own
+ * empty in-memory database: the replay writes to it, and so do the Matcher's AI call records when
+ * the Matcher was created on it. Never the app's database.
+ */
+export async function runEval(matcher: Matcher, cases: MatcherCase[], db: Db = createDb(":memory:")): Promise<EvalRun> {
+  const replayOutcome = await replay(matcher, db);
   const outcomes: CaseOutcome[] = [];
   for (const c of cases) outcomes.push(await runCase(matcher, c));
   return { replay: replayOutcome, caseScores: caseScores(outcomes), cases: outcomes };

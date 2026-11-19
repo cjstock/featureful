@@ -14,9 +14,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { and, eq, sql } from "drizzle-orm";
 import { createDb, DATABASE_PATH, type Db } from "@/db";
-import { matchingDecisions, people, problems, productStrategy, requests, supports } from "@/db/schema";
+import { aiCalls, matchingDecisions, people, problems, productStrategy, requests, supports } from "@/db/schema";
+import type { AiCaller } from "@/lib/ai";
 import { createIntake, type Matcher } from "@/lib/intake";
-import { llmMatcher } from "@/lib/intake/llm-matcher";
+import { createLlmMatcher } from "@/lib/intake/llm-matcher";
 import { evaluateProblem } from "@/lib/evaluator";
 import { DEFAULT_PRODUCT_STRATEGY, saveProductStrategy } from "@/lib/product-strategy";
 import { SEED_EXTRA_SUPPORT, SEED_PEOPLE, SEED_REQUESTS } from "./seed-data";
@@ -32,11 +33,14 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-let aiCalls = 0;
+/** The seed's AI calls are recorded in the seeded database with source "seed". */
+const SEED_CALLER: AiCaller = { source: "seed", person: null };
+
+let aiCallCount = 0;
 /** Count one AI call, refusing to go over the cap. */
 function spendAiCall(what: string) {
-  if (aiCalls >= maxAiCalls) fail(`AI call cap of ${maxAiCalls} reached before ${what}.`);
-  aiCalls++;
+  if (aiCallCount >= maxAiCalls) fail(`AI call cap of ${maxAiCalls} reached before ${what}.`);
+  aiCallCount++;
 }
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -45,6 +49,7 @@ const daysAgo = (days: number) => new Date(Date.now() - days * 24 * 60 * 60 * 10
 function reset(db: Db) {
   db.transaction((tx) => {
     tx.delete(matchingDecisions).run();
+    tx.delete(aiCalls).run();
     tx.delete(supports).run();
     tx.delete(requests).run();
     tx.delete(problems).run();
@@ -86,6 +91,7 @@ async function main() {
   console.log(`Created ${personId.size} people and the Product Strategy.\n`);
 
   const groupProblem = new Map<string, number>();
+  const llmMatcher = createLlmMatcher(db, SEED_CALLER);
   const matcher: Matcher = dryRun
     ? fakeMatcher(groupProblem)
     : (draft, list, examples) => {
@@ -146,9 +152,9 @@ async function main() {
   if (dryRun) {
     console.log(`\nSkipping evaluation of ${problemIds.length} Problems (dry run).`);
   } else {
-    if (aiCalls + problemIds.length > maxAiCalls) {
+    if (aiCallCount + problemIds.length > maxAiCalls) {
       fail(
-        `evaluating ${problemIds.length} Problems would take ${aiCalls + problemIds.length} AI calls, over the cap of ${maxAiCalls}. ` +
+        `evaluating ${problemIds.length} Problems would take ${aiCallCount + problemIds.length} AI calls, over the cap of ${maxAiCalls}. ` +
           `Intake data is saved; evaluate later from the app (PM: Re-evaluate all).`,
       );
     }
@@ -156,7 +162,7 @@ async function main() {
     for (const p of problemIds) {
       spendAiCall(`evaluating Problem #${p.id}`);
       try {
-        const e = await evaluateProblem(db, p.id);
+        const e = await evaluateProblem(db, p.id, SEED_CALLER);
         console.log(
           `  #${p.id} ${p.title}: impact ${e.impact.score}, fit ${e.strategicFit.score}, effort ${e.effort.score}, risk ${e.risk.score}`,
         );
@@ -171,7 +177,7 @@ async function main() {
   const multi = new Set(evidence.map((r) => r.problemId).filter((id, i, all) => all.indexOf(id) !== i)).size;
   console.log(
     `\nDone: ${evidence.length} Requests -> ${problemIds.length} Problems (${multi} with several pieces of Evidence). ` +
-      `AI calls: ${aiCalls}/${maxAiCalls}${failed ? `, ${failed} evaluations failed` : ""}.`,
+      `AI calls: ${aiCallCount}/${maxAiCalls}${failed ? `, ${failed} evaluations failed` : ""}.`,
   );
   if (failed) process.exitCode = 1;
 }

@@ -86,6 +86,21 @@ note, a short "Includes … Does not include …" statement that the AI distils
 from every Move, Split, or Confirm with a note. Internal stakeholders see the
 Boundary note on the Problem page, and PMs can edit it there.
 
+## AI calls
+
+Every AI call (the Matcher, the Evaluator and the three writers) goes through
+`aiGenerate` in `src/lib/ai.ts`, the only file allowed to import the AI SDK
+(ESLint enforces it). Each attempt is sent once, without retries, with an
+output cap per module (`AI_MAX_OUTPUT_TOKENS` in `src/lib/config.ts`), and
+recorded in `ai_calls`: module, model, prompt version (a short hash of the
+system prompt), tokens, cost from the price table in config, latency, outcome
+(`ok`, `error`, `parse_failed`, ...), who triggered it, its source (`app`,
+`seed` or `eval`) and the full prompt and output. Matching decisions store the
+prompt version and AI call id. PMs see a line such as
+"Matcher · v3f9a · $0.004 · 1.2s · view prompt" on each Matching decision in
+Match review and on each Problem's evaluation; "view prompt" shows the stored
+prompt and output, to PMs only.
+
 ## Tests and checks
 
 ```bash
@@ -101,7 +116,9 @@ npm run lint        # ESLint
 fixed-state cases in `evals/matcher/cases.ts` against the real Matcher, scores
 them, and gates the result against `evals/baseline.json`. It costs money
 (about 40 Matcher calls), so it is never part of `npm test`; it estimates its
-cost first and stops at 60 AI calls or $1 per run.
+cost first and stops at 60 AI calls or $1 per run. Its Matcher calls go through
+`aiGenerate` with source `eval`, and their AI call records stay in the run's
+in-memory database.
 
 ```bash
 npm run eval -- --estimate         # offline cost estimate, no AI calls

@@ -5,6 +5,7 @@ import { after } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/db/client";
 import { idSchema, message, type Result } from "@/lib/action-result";
+import { appCaller } from "@/lib/ai";
 import { tryEvaluateProblem } from "@/lib/evaluator";
 import { requireRole } from "@/lib/identity";
 import { setBoundaryNote } from "@/lib/match-review";
@@ -36,14 +37,14 @@ export async function reviewMatch(decisionId: number, input: MatchReviewInput): 
   try {
     const pm = await requireRole("pm");
     const { verdict, ...opts } = reviewSchema.parse(input);
-    const matchReview = getMatchReview();
+    const matchReview = getMatchReview(pm.id);
     const id = idSchema.parse(decisionId);
     const affected = matchReview.review(id, verdict, opts, pm.id);
     after(async () => {
       // Never throws; Confirm without a note makes no AI call.
       await matchReview.distilBoundaryNotes(id);
       if (verdict !== "confirm") {
-        for (const problemId of affected) await tryEvaluateProblem(getDb(), problemId);
+        for (const problemId of affected) await tryEvaluateProblem(getDb(), problemId, appCaller(pm.id));
       }
     });
     revalidatePath("/", "layout");

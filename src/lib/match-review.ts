@@ -2,6 +2,7 @@ import { and, asc, count, desc, eq, isNotNull, isNull, ne, sql, type SQL } from 
 import { alias } from "drizzle-orm/sqlite-core";
 import type { Db } from "@/db";
 import {
+  aiCalls,
   matchingDecisions,
   people,
   problems,
@@ -11,6 +12,7 @@ import {
   type SubmitterChoice,
   type Verdict,
 } from "@/db/schema";
+import { summaryColumns, type AiCallLine } from "@/lib/ai-calls";
 
 export const SUBMITTER_CHOICE_LABELS: Record<SubmitterChoice, string> = {
   accepted: "Accepted the match",
@@ -43,6 +45,8 @@ export type MatchingDecisionItem = {
   submitterChoice: SubmitterChoice;
   /** The Problem the Request belongs to now. */
   currentProblem: { id: number; title: string };
+  /** The Matcher's AI call behind the proposal (null for decisions made without one). */
+  aiCall: AiCallLine | null;
   /** Null until a PM gives a Match review. */
   review: {
     verdict: Verdict;
@@ -71,7 +75,7 @@ export type BoundaryNoteInput = {
 
 /**
  * AI dependency: revises a Problem's Boundary note from one Match review
- * ("Includes … Does not include …", at most 3 sentences). Production: `llmBoundaryNoteWriter`.
+ * ("Includes … Does not include …", at most 3 sentences). Production: `createLlmBoundaryNoteWriter`.
  */
 export type BoundaryNoteWriter = (input: BoundaryNoteInput) => Promise<string>;
 
@@ -108,6 +112,7 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
       reviewerName: reviewer.name,
       fromTitle: fromProblem.title,
       toTitle: toProblem.title,
+      aiCall: summaryColumns,
     })
     .from(matchingDecisions)
     .innerJoin(requests, eq(requests.id, matchingDecisions.requestId))
@@ -117,6 +122,7 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
     .leftJoin(reviewer, eq(reviewer.id, matchingDecisions.reviewerId))
     .leftJoin(fromProblem, eq(fromProblem.id, matchingDecisions.fromProblemId))
     .leftJoin(toProblem, eq(toProblem.id, matchingDecisions.toProblemId))
+    .leftJoin(aiCalls, eq(aiCalls.id, matchingDecisions.aiCallId))
     .where(where)
     .orderBy(...orderBy)
     .limit(limit ?? -1)
@@ -141,6 +147,7 @@ function list(db: Db, where: SQL, orderBy: SQL[], limit?: number): MatchingDecis
     },
     submitterChoice: d.submitterChoice,
     currentProblem: row.currentProblem,
+    aiCall: row.aiCall,
     review: d.verdict
       ? {
           verdict: d.verdict,
