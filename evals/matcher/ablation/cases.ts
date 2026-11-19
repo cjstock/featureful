@@ -1,7 +1,9 @@
 /**
  * The Boundary-notes ablation set (build ticket 06), kept as the record of the
  * test behind ADR 0003. Nothing runs it any more: Boundary notes were cut, and
- * with them the ablation's runner and arm (c). The ADR says how to restore both.
+ * with them the ablation's runner and arm (c). The runner that produced
+ * result.json is on branch archive/06-ablation-runner (commit 64581dd962d9,
+ * never merged); the ADR says how to restore it.
  *
  * One fixed state, as in production: a Problem list and eight simulated PM
  * Match reviews. Each review draws a line between two Problems that the titles

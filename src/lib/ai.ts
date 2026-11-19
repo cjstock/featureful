@@ -3,7 +3,7 @@ import { anthropic } from "@ai-sdk/anthropic";
 import { generateText, NoObjectGeneratedError, Output, type LanguageModel } from "ai";
 import { z } from "zod";
 import type { Db } from "@/db";
-import { aiCalls, type AiCallOutcome, type AiCallSource, type AiModule, type AiRelatedType } from "@/db/schema";
+import { aiCalls, type AiCallOutcome, type AiCallSource, type AiRelatedType, type CallableAiModule } from "@/db/schema";
 import { CLAUDE_MODEL, MODEL_PRICES, type ModelPrices } from "./config";
 
 /**
@@ -42,7 +42,8 @@ export type AiRelated = { type: AiRelatedType; id: number } | null;
 export type AiGenerateParams<S extends z.ZodType> = AiCaller & {
   /** Where the AI call row is written. */
   db: Db;
-  module: AiModule;
+  /** Retired modules (ADR 0003) are not accepted: they make no new AI calls. */
+  module: CallableAiModule;
   related: AiRelated;
   system: string;
   prompt: string;

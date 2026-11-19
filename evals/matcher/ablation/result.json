@@ -1,5 +1,7 @@
 {
   "commit": "72138eddd088",
+  "context": "Ran on archive/06-ablation-runner (commit 64581dd962d9, the runner; parent 72138edd = the `commit` above, the ticket-02 Matcher, before the AI call seam (03) and Customer-text delimiting (08)). Command: npm run eval -- --ablation. The cut (ADR 0003) was applied later, on top of 08.",
+  "runnerCommit": "64581dd962d9",
   "date": "2026-11-19T05:58:43.499Z",
   "model": "claude-sonnet-5-5",
   "notesFixture": {

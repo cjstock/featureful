@@ -2,9 +2,13 @@
 
 **Decided by rule overnight (2026-11-18); the human may overturn.** This amends step 3 of [ADR 0002](0002-matcher-learns-from-pm-reviews-in-prompt.md)'s path to scale ("Problem boundary notes, adopted in the first version"). Boundary notes are no longer adopted. The Matcher learns the PM's lines from Matching examples, and Regression cases keep those lines in place.
 
-## The test
+## The test (historical)
 
-The test is build ticket 06 (`npm run eval -- --ablation`, cases in `evals/matcher/ablation/`). We used one fixed state: 12 Problems and 8 simulated PM Match reviews. Every review is a Move or Split that draws a line the titles don't make obvious: roast-data import vs a profile to roast against, export vs a personal copy of a shared recipe, grinder calibration vs remembered settings, grinder retention vs calibration, recipe scaling vs the ratio calculator, backup vs export, roasted vs green stock, and live sync vs export. The reviews are the Matching examples. The real Boundary-note writer distilled the Boundary notes from those same reviews, once, and the result is committed in `boundary-notes.json` (14 writer calls, $0.0429).
+This section describes a run whose runner is not on `v2`. It lives on the archive branch `archive/06-ablation-runner` (commit `64581dd962d9`), which is never merged; see "How to bring it back" below.
+
+**What it ran against.** The ablation ran on that archive commit, whose parent is `72138edd`. That is the ticket-02 Matcher: before the AI call seam (ticket 03) and before Customer-text delimiting (ticket 08). The Matcher prompt then had the Boundary-note paragraph and no Customer-text tags. The cut itself was applied later, on top of ticket 08. The command was `npm run eval -- --ablation --estimate`, then `npm run eval -- --ablation`, both run once. The notes were written before that with `npm run eval -- --ablation-notes`, also once.
+
+The test is build ticket 06, with its cases in `evals/matcher/ablation/`. We used one fixed state: 12 Problems and 8 simulated PM Match reviews. Every review is a Move or Split that draws a line the titles don't make obvious: roast-data import vs a profile to roast against, export vs a personal copy of a shared recipe, grinder calibration vs remembered settings, grinder retention vs calibration, recipe scaling vs the ratio calculator, backup vs export, roasted vs green stock, and live sync vs export. The reviews are the Matching examples. The real Boundary-note writer distilled the Boundary notes from those same reviews, once, and the result is committed in `boundary-notes.json` (14 writer calls, $0.0429).
 
 We tested 8 boundary cases, each a new Request on one review's line and worded differently from the reviewed Request. We also ran 3 golden cases, in arms (b) and (c), for the regression veto. The three arms were:
 
@@ -49,7 +53,7 @@ These were removed in the same PR as this ADR:
 - `ProblemSummary.boundaryNote`
 - the `problems.boundary_note` column, dropped by migration `0003_drop_boundary_note`, which also drops any notes already stored
 
-The `boundary_note` AI module stays in `AI_MODULES`, so AI call records the writer made still read, but nothing calls it.
+The `boundary_note` AI module stays in `AI_MODULES` so AI call records the writer made still read. It is listed in `RETIRED_AI_MODULES`, so `aiGenerate` won't accept it (type-checked), and it has no output cap.
 
 Kept as the record of this test, in `evals/matcher/ablation/`:
 
@@ -60,11 +64,13 @@ Kept as the record of this test, in `evals/matcher/ablation/`:
 
 The ablation runner (`--ablation`, `--ablation-notes`) was removed too, because arm (c) needs the Matcher's notes path.
 
-To re-run the test, take three steps:
+### How to bring it back
 
-1. Restore the Matcher's notes path and the writer from `v2` before this PR (commit `8432599`).
-2. Re-add a runner that judges `armCases(arm)` with each arm's Problems (with or without notes) and `ablationMatchingExamples()` (or none) through the metered Matcher.
-3. Feed its `ArmRun`s to `decideBoundaryNotes`.
+- **The runnable record** is branch `archive/06-ablation-runner`, at commit `64581dd962d9`. It is never merged. To reproduce the run exactly, check out that commit and run `npm run eval -- --ablation`. It reads the committed `boundary-notes.json`, makes 60 Matcher calls, and has a worst case of about $0.89. It runs against the ticket-02 Matcher, not today's.
+- **The last `v2` commit with the writer** is `8432599` (ticket 03). There the writer goes through `aiGenerate`, and the Matcher still reads notes. To test notes on the current Matcher, take these three steps:
+  1. Restore the writer, `ProblemSummary.boundaryNote` and the prompt section from `8432599`, and remove `boundary_note` from `RETIRED_AI_MODULES`.
+  2. Port the archive branch's `evals/harness/ablation-run.ts` and the `--ablation` path in `scripts/eval.ts` to `createLlmMatcher` and the eval meter.
+  3. Feed the resulting `ArmRun`s to `decideBoundaryNotes`.
 
 ## What this can't tell you
 

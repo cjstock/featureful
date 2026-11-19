@@ -134,7 +134,9 @@ const HAND_CASES: MatcherCase[] = [
   },
 
   // Boundary: same area of the app, different underlying need. The two `-note` cases carried a
-  // Boundary note until ADR 0003 cut them; they keep their ids and answers so the baseline stays comparable.
+  // Boundary note until ADR 0003 cut them, and evals/baseline.json was recorded WITH those notes in
+  // the prompt. Both still passed without them (local eval on PR #8). If either flips later, read it
+  // first as an effect of the cut, not noise, before re-baselining.
   {
     id: "boundary-grind-recommendation",
     kind: "boundary",

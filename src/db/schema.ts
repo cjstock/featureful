@@ -29,11 +29,17 @@ export const VERDICTS = ["confirm", "move", "split"] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 /**
- * The AI modules: each AI call is made by exactly one. `boundary_note` (the Boundary-note writer) is
- * retired (ADR 0003) and makes no calls; it stays so AI call records it made still read.
+ * The AI modules: each AI call record names exactly one. Includes retired modules, so AI call
+ * records they made still read.
  */
 export const AI_MODULES = ["matcher", "evaluator", "boundary_note", "decision_note", "brief"] as const;
 export type AiModule = (typeof AI_MODULES)[number];
+
+/** Modules that make no more AI calls: `boundary_note`, the Boundary-note writer, cut by ADR 0003. */
+export const RETIRED_AI_MODULES = ["boundary_note"] as const satisfies readonly AiModule[];
+
+/** The modules `aiGenerate` accepts: every AI module except the retired ones. */
+export type CallableAiModule = Exclude<AiModule, (typeof RETIRED_AI_MODULES)[number]>;
 
 /** What started an AI call: the app, the seed script, or an eval run. */
 export const AI_CALL_SOURCES = ["app", "seed", "eval"] as const;
